@@ -37,6 +37,8 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// <summary>Sollevato ad ogni variazione dell'input di movimento, con il vettore direzione.</summary>
     public event Action<Vector2> MoveEvent;
 
+    public Vector2 AimPosition { get; private set; }
+
 
     /// <summary>
     /// Crea (se necessario) la mappa di controlli, registra questo oggetto come
@@ -93,5 +95,10 @@ public class InputReader : ScriptableObject, IPlayerActions
         {
             PrimaryFireEvent?.Invoke(false);
         }
+    }
+
+    public void OnAim(InputAction.CallbackContext context)
+    {
+        AimPosition = context.ReadValue<Vector2>();
     }
 }
