@@ -19,8 +19,8 @@ using static Controls;
 /// ognuno debba istanziare la propria mappa di controlli.
 /// </summary>
 // [FLUSSO 1] Implementando "IPlayerActions" (interfaccia definita in Controls.cs)
-// firmiamo un "contratto": ci impegniamo a fornire i metodi OnMove e OnPrimaryFire.
-// Sara' l'Input System a chiamarli quando l'utente preme i tasti.
+// firmiamo un "contratto": ci impegniamo a fornire i metodi OnMove, OnPrimaryFire e OnAim.
+// Sara' l'Input System a chiamarli quando l'utente muove il mouse o preme i tasti.
 [CreateAssetMenu(fileName = "InputReader", menuName = "Input/Input Reader")]
 public class InputReader : ScriptableObject, IPlayerActions
 {
@@ -37,6 +37,11 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// <summary>Sollevato ad ogni variazione dell'input di movimento, con il vettore direzione.</summary>
     public event Action<Vector2> MoveEvent;
 
+    /// <summary>Posizione di mira corrente, in coordinate schermo (pixel), sempre leggibile.</summary>
+    // [FLUSSO 3b] La mira NON usa un evento ma una proprieta' "a lettura continua" (polling):
+    // la posizione del puntatore cambia di continuo e a chi punta la torretta (PlayerAim)
+    // serve sempre il valore piu' aggiornato ogni frame, non una notifica per ogni pixel.
+    // Percio' qui memorizziamo solo l'ultimo valore letto e lo esponiamo in sola lettura.
     public Vector2 AimPosition { get; private set; }
 
 
@@ -97,8 +102,15 @@ public class InputReader : ScriptableObject, IPlayerActions
         }
     }
 
+    /// <summary>
+    /// Callback dell'Input System per la mira: memorizza la posizione del puntatore
+    /// (coordinate schermo) in <see cref="AimPosition"/>, pronta per essere letta ogni frame.
+    /// </summary>
     public void OnAim(InputAction.CallbackContext context)
     {
+        // [FLUSSO 7c] A differenza di Move/Fire, qui NON solleviamo un evento:
+        // salviamo e basta l'ultima posizione del mouse. Sara' PlayerAim, in LateUpdate,
+        // a leggere questo valore e a orientare la torretta di conseguenza.
         AimPosition = context.ReadValue<Vector2>();
     }
 }
