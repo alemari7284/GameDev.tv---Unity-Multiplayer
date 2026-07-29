@@ -31,7 +31,13 @@ public class ClientNetworkTransform : NetworkTransform
     /// </summary>
     public override void OnNetworkSpawn()
     {
+        // [FLUSSO 1] base.OnNetworkSpawn() esegue la logica di setup del NetworkTransform
+        // di Netcode: va chiamata per prima per non rompere il comportamento standard.
         base.OnNetworkSpawn();
+
+        // [FLUSSO 2] CanCommitToTransform = "ho il diritto di scrivere/inviare il transform?".
+        // Lo impostiamo pari a IsOwner: solo il proprietario dell'oggetto potra' farlo.
+        // Sul tank degli altri giocatori IsOwner e' false -> restera' in sola ricezione.
         CanCommitToTransform = IsOwner;
     }
 
@@ -43,14 +49,31 @@ public class ClientNetworkTransform : NetworkTransform
     /// </summary>
     protected override void Update()
     {
+        // [FLUSSO 3] Ricalcoliamo il diritto di scrittura a OGNI frame (non solo allo spawn):
+        // e' robusto anche se la proprieta' dell'oggetto cambiasse a runtime.
         CanCommitToTransform = IsOwner;
+
+        // [FLUSSO 4] base.Update() e' il motore del NetworkTransform:
+        // - se siamo l'owner, applica/committa lo stato locale;
+        // - se NON lo siamo, INTERPOLA verso i valori ricevuti dalla rete (movimento fluido).
         base.Update();
+
+        // [FLUSSO 5] Guard di sicurezza: prima dello spawn o fuori da una sessione,
+        // NetworkManager puo' essere null. Evita un NullReferenceException piu' sotto.
         if (NetworkManager != null)
         {
+            // [FLUSSO 6] Inviamo dati solo se siamo davvero "in rete":
+            // IsConnectedClient = client connesso a un host;
+            // IsListening       = server/host attivo.
             if (NetworkManager.IsConnectedClient || NetworkManager.IsListening)
             {
+                // [FLUSSO 7] Ultimo filtro: solo il proprietario prosegue (vedi FLUSSO 3).
+                // Le copie remote si fermano qui e si limitano a interpolare (FLUSSO 4).
                 if (CanCommitToTransform)
                 {
+                    // [FLUSSO 8] Cuore della client authority: mando il MIO transform al server
+                    // insieme al tempo di rete locale (LocalTime.Time). Quel timestamp serve
+                    // agli altri client per interpolare correttamente nel tempo cio' che ricevono.
                     TryCommitTransformToServer(transform, NetworkManager.LocalTime.Time);
                 }
             }
@@ -63,6 +86,9 @@ public class ClientNetworkTransform : NetworkTransform
     /// </summary>
     protected override bool OnIsServerAuthoritative()
     {
+        // [FLUSSO 0] Netcode chiama questo metodo per sapere "chi comanda" sul transform.
+        // Ritornando false dichiariamo che l'authority NON e' del server ma del client owner.
+        // E' questa riga a trasformare un normale NetworkTransform in uno client-authoritative.
         return false;
     }
 }
