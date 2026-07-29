@@ -49,7 +49,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 3028038421
+  GlobalObjectIdHash: 967977392
   InScenePlacedSourceGlobalObjectIdHash: 0
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
@@ -112,7 +112,7 @@ Rigidbody2D:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 4
@@ -131,7 +131,7 @@ MonoBehaviour:
   inputReader: {fileID: 11400000, guid: 6952f6c3ffff44ffaa7fd40e20674de1, type: 2}
   bodyTransform: {fileID: 3013648335244148463}
   rb: {fileID: 3316215352606307925}
-  movementSpeed: 4
+  movementSpeed: 5
   turningRate: 270
 --- !u!1 &902320942520452615
 GameObject:

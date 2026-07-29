@@ -34,13 +34,25 @@ public class PlayerMovement : NetworkBehaviour
     }
 
     // Update is called once per frame
-    void Update()
+    private void Update()
     {
         if (!IsOwner) return;
 
         float zRotation = previousMovementInput.x * -turningRate * Time.deltaTime;
         bodyTransform.Rotate(0, 0, zRotation);
     }
+
+    // FixedUpdate is called at a fixed interval and is independent of frame rate. 
+    // It's not called every frame of the normal engine, it's called every
+    // frame of the physics engine.
+    private void FixedUpdate()
+    {
+        if (!IsOwner) return;
+
+        // no need to multiply by Time.deltaTime here, since FixedUpdate is already called at a fixed interval
+        rb.velocity = (Vector2)bodyTransform.up * previousMovementInput.y * movementSpeed;
+    }
+
 
     private void handleMove(Vector2 movementInput)
     {
