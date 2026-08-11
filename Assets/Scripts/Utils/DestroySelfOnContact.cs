@@ -11,6 +11,7 @@ public class DestroySelfOnContact : MonoBehaviour
         // autodistrugge al primo contatto (es. con un tank o un ostacolo): essendo il
         // server ad averlo istanziato, questa distruzione e' autorevole e si propaga
         // a tutti i client.
+        if (collision.gameObject.layer == LayerMask.NameToLayer("Projectile")) return; // ignora altri proiettili
         Destroy(gameObject);
     }
 }
