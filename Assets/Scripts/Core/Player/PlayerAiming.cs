@@ -15,7 +15,8 @@ using UnityEngine;
 public class PlayerAiming : NetworkBehaviour
 {
     // [FLUSSO 8] Riferimenti impostati nell'Inspector:
-    // - inputReader: lo stesso ScriptableObject usato per il movimento, da cui leggiamo AimPosition.
+    // - inputReader: lo stesso ScriptableObject usato per il movimento, da cui leggiamo 
+    // AimPosition.
     // - turretTransform: il transform del TurretPivot che vogliamo far ruotare.
     [SerializeField] private InputReader inputReader;
     [SerializeField] private Transform turretTransform;
