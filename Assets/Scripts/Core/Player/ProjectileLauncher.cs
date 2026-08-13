@@ -94,6 +94,16 @@ public class ProjectileLauncher : NetworkBehaviour
 
         projectileInstance.transform.up = direction;
         Physics2D.IgnoreCollision(playerCollider, projectileInstance.GetComponent<Collider2D>());
+
+        // [FLUSSO 29] Il proiettile deve sapere chi lo ha sparato, cosi' da non poter
+        // colpire il proprio proprietario (vedi DealDamageOnContact, FLUSSO 30-33):
+        // eseguito solo qui, lato server (FLUSSO 18), dove OwnerClientId del
+        // ProjectileLauncher e' gia' noto e autorevole.
+        if (projectileInstance.TryGetComponent<DealDamageOnContact>(out DealDamageOnContact dealDamage))
+        {
+            dealDamage.setOwnerClientId(OwnerClientId);
+        }
+
         if (projectileInstance.TryGetComponent<Rigidbody2D>(out Rigidbody2D rb))
         {
             Debug.Log("projectileSpeed " + projectileSpeed);
