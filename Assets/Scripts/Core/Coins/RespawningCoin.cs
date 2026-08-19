@@ -45,6 +45,14 @@ public class RespawningCoin : Coin
         }
     }
 
+    // [FLUSSO 53] Chiamato dal CoinSpawner subito dopo aver ricollocato la moneta
+    // (FLUSSO 52): azzera alreadyCollected cosi' che il controllo autorevole in
+    // collect() (FLUSSO 43) torni a considerarla raccoglibile.
+    public void Reset()
+    {
+        alreadyCollected = false;
+    }
+
     private void Update()
     {
         // [FLUSSO 54] Il riposizionamento della moneta e' deciso solo dal server
@@ -60,13 +68,5 @@ public class RespawningCoin : Coin
         }
 
         previousPosition = transform.position;
-    }
-
-    // [FLUSSO 53] Chiamato dal CoinSpawner subito dopo aver ricollocato la moneta
-    // (FLUSSO 52): azzera alreadyCollected cosi' che il controllo autorevole in
-    // collect() (FLUSSO 43) torni a considerarla raccoglibile.
-    public void Reset()
-    {
-        alreadyCollected = false;
     }
 }

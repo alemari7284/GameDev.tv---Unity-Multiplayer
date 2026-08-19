@@ -9,6 +9,11 @@ public class ProjectileLauncher : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] private InputReader inputReader;
+    // [FLUSSO 56] Riferimento al CoinWallet del proprietario: serve per il costo in
+    // monete di ogni sparo (costToFire, dichiarato sotto), controllato sia lato
+    // client (FLUSSO 57b, solo per ottimizzazione) sia lato server (FLUSSO 58,
+    // l'unico controllo che conta davvero).
+    [SerializeField] private CoinWallet wallet;
     [SerializeField] private Transform projectileSpawnPoint;
     // [FLUSSO 14] Due prefab diversi per lo stesso sparo: "serverProjectilePrefab" e' il
     // proiettile VERO, istanziato solo sul server, che infligge danno reale (autorevole).
@@ -24,9 +29,17 @@ public class ProjectileLauncher : NetworkBehaviour
     [SerializeField] private float projectileSpeed;
     [SerializeField] private float fireRate;
     [SerializeField] private float muzzleFlashDuration;
+    // [FLUSSO 56b] Costo in monete di ogni sparo: viene scalato dal wallet (vedi
+    // "wallet" qui sopra, FLUSSO 56) tramite CoinWallet.spendCoins (FLUSSO 59),
+    // solo quando il server autorizza effettivamente lo sparo (FLUSSO 58).
+    [SerializeField] private int costToFire;
 
     private bool shouldFire;
-    private float previousFireTime;
+    // [FLUSSO 57] Timer di cooldown tra due spari: conta alla rovescia ad ogni
+    // frame in Update e si ricarica a 1/fireRate solo dopo uno sparo riuscito.
+    // "Posso sparare se timer <= 0" e' piu' semplice da leggere rispetto a
+    // confrontare due timestamp assoluti (Time.time).
+    private float timer;
     private float muzzleFlashTimer;
 
     public override void OnNetworkSpawn()
@@ -60,10 +73,18 @@ public class ProjectileLauncher : NetworkBehaviour
 
         if (!IsOwner) return;
 
+        if (timer > 0) timer -= Time.deltaTime;
+
         if (!shouldFire) return;
 
-        if (Time.time - previousFireTime < 1 / fireRate) return;
+        if (timer > 0) return;
 
+        // [FLUSSO 57b] Controllo "cosmetico" lato client: se non ci sono abbastanza
+        // monete evitiamo di inviare inutilmente la ServerRpc e di mostrare un
+        // dummy che il server rifiuterebbe comunque. Non e' autorevole: la vera
+        // verifica, quella che decide se lo sparo conta davvero, e' lato server
+        // (FLUSSO 58) e va rifatta li' per intero.
+        if (wallet.totalCoins.Value < costToFire) return;
 
         // [FLUSSO 17] Se il tasto di fuoco e' premuto (shouldFire, aggiornato dal
         // FLUSSO 20), avviamo lo sparo su due binari: chiediamo al server di generare
@@ -78,7 +99,8 @@ public class ProjectileLauncher : NetworkBehaviour
         PrimaryFireServerRpc(projectileSpawnPoint.position, projectileSpawnPoint.up);
 
         SpawnDummyProjectile(projectileSpawnPoint.position, projectileSpawnPoint.up);
-        previousFireTime = Time.time;
+        timer = 1 / fireRate;
+
     }
 
     [ServerRpc]
@@ -87,6 +109,15 @@ public class ProjectileLauncher : NetworkBehaviour
         // [FLUSSO 18] Eseguito solo sul server: istanzia il proiettile VERO (quello che
         // infliggera' danno) e poi avvisa tutti i client, tramite ClientRpc, di mostrare
         // anche loro un proiettile dummy nello stesso punto e direzione.
+        // [FLUSSO 58] Controllo autorevole: rifa' la stessa verifica del client
+        // (FLUSSO 57b), perche' quel controllo e' solo un'ottimizzazione, non una
+        // garanzia - un client modificato potrebbe inviare comunque la ServerRpc.
+        // Solo se qui le monete bastano davvero si procede e si scala il costo
+        // (CoinWallet.spendCoins, FLUSSO 59).
+        if (wallet.totalCoins.Value < costToFire) return;
+
+        wallet.spendCoins(costToFire);
+
         GameObject projectileInstance = Instantiate(
             serverProjectilePrefab,
             spawnPos,

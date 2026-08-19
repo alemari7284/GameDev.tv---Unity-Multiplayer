@@ -25,6 +25,18 @@ using UnityEngine;
 public class ClientNetworkTransform : NetworkTransform
 {
     /// <summary>
+    /// Disattiva la server authority di base del NetworkTransform, rendendo
+    /// questo componente client-authoritative.
+    /// </summary>
+    protected override bool OnIsServerAuthoritative()
+    {
+        // [FLUSSO 0] Netcode chiama questo metodo per sapere "chi comanda" sul transform.
+        // Ritornando false dichiariamo che l'authority NON e' del server ma del client owner.
+        // E' questa riga a trasformare un normale NetworkTransform in uno client-authoritative.
+        return false;
+    }
+
+    /// <summary>
     /// Allo spawn in rete abilita la scrittura del transform solo se questa
     /// istanza e' il proprietario dell'oggetto, cosi' che ogni client controlli
     /// esclusivamente il proprio tank.
@@ -78,17 +90,5 @@ public class ClientNetworkTransform : NetworkTransform
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Disattiva la server authority di base del NetworkTransform, rendendo
-    /// questo componente client-authoritative.
-    /// </summary>
-    protected override bool OnIsServerAuthoritative()
-    {
-        // [FLUSSO 0] Netcode chiama questo metodo per sapere "chi comanda" sul transform.
-        // Ritornando false dichiariamo che l'authority NON e' del server ma del client owner.
-        // E' questa riga a trasformare un normale NetworkTransform in uno client-authoritative.
-        return false;
     }
 }

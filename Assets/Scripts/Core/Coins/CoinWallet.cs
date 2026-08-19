@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
@@ -33,5 +34,14 @@ public class CoinWallet : NetworkBehaviour
             totalCoins.Value += coinValue;
         }
 
+    }
+
+    // [FLUSSO 59] Chiamato solo dal server (ProjectileLauncher.PrimaryFireServerRpc,
+    // FLUSSO 58) dopo aver gia' verificato che il giocatore abbia abbastanza
+    // monete: sottrae il costo dello sparo dalla stessa NetworkVariable
+    // incrementata qui sopra da OnTriggerEnter2D (FLUSSO 44).
+    public void spendCoins(int costToFire)
+    {
+        totalCoins.Value -= costToFire;
     }
 }
