@@ -30,7 +30,15 @@ public class HostSingleton : MonoBehaviour
         }
     }
 
-    private HostGameManager gameManager;
+    // [FLUSSO 82] Proprieta' pubblica (prima era un campo privato, illeggibile da fuori
+    // questa classe): serve a MainMenu.StartHost (FLUSSO 83) per raggiungere
+    // HostGameManager.StartHostAsync (FLUSSO 85-89) dall'esterno tramite
+    // HostSingleton.Instance.GameManager. Si allinea al pattern gia' usato da
+    // ClientSingleton.gameManager (FLUSSO 66/68), che pero' era gia' pubblica fin
+    // dall'inizio proprio in previsione di un uso futuro dal Menu. Il "private set"
+    // impedisce comunque a chiunque, fuori da questa classe, di sostituire l'istanza:
+    // solo createHost() (sotto) puo' assegnarla.
+    public HostGameManager GameManager { get; private set; }
 
     // Start is called before the first frame update
     private void Start()
@@ -44,7 +52,7 @@ public class HostSingleton : MonoBehaviour
     // una classe vuota (FLUSSO 81), quindi createHost si limita a istanziarla.
     public void createHost()
     {
-        gameManager = new HostGameManager();
+        GameManager = new HostGameManager();
     }
 
 

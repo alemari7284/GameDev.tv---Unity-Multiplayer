@@ -66,9 +66,11 @@ Questo è il **vero** primo codice eseguito all'avvio del gioco, prima ancora de
 | **60** | Campi Inspector `clientPrefab`/`hostPrefab`: i "capostipiti" delle due catene di singleton, istanziati dinamicamente più sotto. |
 | **61** | `Start()`: `DontDestroyOnLoad(gameObject)` (l'oggetto deve sopravvivere al cambio scena verso il Menu, FLUSSO 70) e rilevamento dedicated server via `SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null` (un server headless non ha una GPU). |
 | **62** | `launchInMode`, ramo dedicated server: ancora uno stub vuoto. |
+| **64** | Subito dopo (nel codice viene PRIMA di FLUSSO 63, vedi nota sotto), **sempre** (anche per un client puro): `Instantiate(hostPrefab)` + `createHost()` (FLUSSO 80), per essere già pronti se questa istanza dovesse diventare host in seguito (es. premendo "Host" nel Menu, `MainMenu.StartHost`, FLUSSO 83). |
 | **63** | `launchInMode`, ramo client: `Instantiate(clientPrefab)` poi `await clientSingleton.createClient()` (FLUSSO 68), che a catena esegue l'intera autenticazione. |
-| **64** | Subito dopo, **sempre** (anche per un client puro): `Instantiate(hostPrefab)` + `createHost()` (FLUSSO 80), per essere già pronti se questa istanza dovesse diventare host in seguito. |
 | **65** | Solo se `authenticated == true`: `clientSingleton.gameManager.goToMenu()` (FLUSSO 70). Se falso (es. `AuthState.Error`/`Timeout` dopo `maxTries` tentativi falliti, FLUSSO 76) l'app resta bloccata sulla scena di bootstrap: non c'è ancora un messaggio d'errore o un retry visibile all'utente. |
+
+> **Nota sull'ordine 64 → 63**: i numeri `FLUSSO` restano legati al *significato* del passo (63 = ramo client, 64 = host creato sempre), non alla riga in cui compaiono — per questo qui il 64 precede il 63 nella tabella, rispecchiando l'ordine reale nel file. Il motivo dello scambio: `createHost()` è sincrono e non dipende in nulla dall'esito dell'autenticazione, quindi non ha senso lasciarlo "in mezzo" a un `await`. Spostandolo prima, `HostSingleton.Instance` è pronto il prima possibile invece che solo a fine autenticazione client.
 
 ### 2.2 `ClientSingleton.cs` + `ClientGameManager.cs` — bootstrap lato client
 
@@ -98,14 +100,62 @@ Wrapper `static` (un solo stato per tutto il processo, non per istanza) attorno 
 
 ### 2.4 `HostSingleton.cs` + `HostGameManager.cs` — bootstrap lato host
 
-Controparte simmetrica di §2.2, ma lato host: stesso identico pattern, per ora dietro a un `HostGameManager` ancora vuoto.
+Controparte simmetrica di §2.2, ma lato host: stesso identico pattern, dietro a un `HostGameManager` che ora (§2.5) sa davvero avviare una sessione.
 
 | FLUSSO | File | Cosa succede |
 |---|---|---|
 | **78** | `HostSingleton.cs` | Pattern singleton "lazy", identico al FLUSSO 66. |
 | **79** | `HostSingleton.Start` | `DontDestroyOnLoad`, stesso motivo del FLUSSO 67. |
-| **80** | `HostSingleton.createHost` | Istanzia `HostGameManager` (FLUSSO 81); a differenza di `createClient` (FLUSSO 68) non c'è ancora nessuna logica asincrona da avviare. |
-| **81** | `HostGameManager.cs` | Classe placeholder ancora vuota: qui in futuro andrà la logica di avvio sessione lato host (Relay/Lobby, poi `NetworkManager.Singleton.StartHost()`, oggi ancora gestito "a mano" da `ConnectionButtons`, §3). |
+| **80** | `HostSingleton.createHost` | Istanzia `HostGameManager` (FLUSSO 81); a differenza di `createClient` (FLUSSO 68) non c'è ancora nessuna logica asincrona da avviare qui: quella è tutta dentro `StartHostAsync` (FLUSSO 85-89), chiamata più tardi, non da `createHost`. |
+| **81** | `HostGameManager.cs` | Non più un placeholder: `StartHostAsync` (§2.5) alloca una sessione su Unity Relay, configura il transport e avvia davvero l'host. |
+| **82** | `HostSingleton.GameManager` | Proprietà pubblica (`{ get; private set; }`, prima era un campo privato illeggibile da fuori): si allinea al pattern già usato da `ClientSingleton.gameManager` (FLUSSO 66/68) e serve a `MainMenu.StartHost` (FLUSSO 83) per raggiungere `HostGameManager` dall'esterno tramite `HostSingleton.Instance.GameManager`. |
+
+### 2.5 `MainMenu.cs` + `HostGameManager.StartHostAsync` — avvio reale della sessione Host (Relay)
+
+File coinvolti:
+- `Assets/Scripts/UI/MainMenu.cs` — bottone "Host" nella scena `Menu`.
+- `Assets/Scripts/Networking/Host/HostGameManager.cs` — logica vera di avvio sessione.
+
+Fino a qui `HostGameManager` era vuoto: `createHost()` (FLUSSO 80) si limitava a istanziarlo, pronto ma inerte. Da qui in poi, premendo "Host" nel Menu, la sessione viene davvero aperta, appoggiandosi a **Unity Relay** invece che a un IP diretto (vedi `com.unity.services.relay`, aggiunto in `Packages/manifest.json`).
+
+> **Perché Relay e non un IP diretto**: un IP diretto (come fa ancora `ConnectionButtons`, §3, per i test in locale) richiede che l'host abbia un indirizzo raggiungibile dagli altri giocatori — quasi mai vero su Internet reale (NAT, router, firewall). Relay fa da "postino" neutrale: sia host che client si connettono AD ESSO, mai direttamente tra loro, ed è lui a girare i pacchetti. In cambio di un po' di latenza in più, funziona ovunque senza alcuna configurazione di rete lato utente.
+
+| FLUSSO | File | Cosa succede |
+|---|---|---|
+| **83** | `MainMenu.StartHost` | Metodo agganciato all'`OnClick` del bottone "Host" nella scena `Menu` (Inspector, non codice). Chiama `HostSingleton.Instance.GameManager.StartHostAsync()`. Funziona solo se si è arrivati al Menu passando da `NetBootstrap` (dove `HostSingleton` viene creato, FLUSSO 64): aprire la scena Menu direttamente lascia `Instance` a `null` e lancia una `NullReferenceException` — non un bug del metodo, ma dell'ordine di avvio delle scene. |
+| **84** | `HostGameManager` (campi) | `allocation`/`joinCode`: stato della sessione Relay corrente (servirà a mostrare il join code a schermo, quando esisterà un ramo "Join" lato client). `gameSceneName`/`maxConnections`: configurazione. |
+| **85** | `HostGameManager.StartHostAsync` | `Relay.Instance.CreateAllocationAsync(maxConnections)`: riserva risorse sui server Relay di Unity per una partita fino a `maxConnections` giocatori. Chiamata di rete, quindi in `try/catch`. |
+| **86** | `HostGameManager.StartHostAsync` | `Relay.Instance.GetJoinCodeAsync(allocation.AllocationId)`: trasforma l'allocation in un codice breve condivisibile. Per ora solo loggato (`Debug.Log`), non ancora mostrato in UI. |
+| **87** | `HostGameManager.StartHostAsync` | Recupera lo `UnityTransport` dal `NetworkManager` e gli passa `new RelayServerData(allocation, "udp")`: da qui in poi Netcode instraderà tutto tramite Relay invece che con IP diretto. |
+| **88** | `HostGameManager.StartHostAsync` | `NetworkManager.Singleton.StartHost()`: solo ORA, a transport configurato, questa istanza diventa davvero server+client (Host, vedi §1). |
+| **89** | `HostGameManager.StartHostAsync` | `NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, ...)`: cambio scena "di rete" (diverso da `SceneManager.LoadScene` usato in FLUSSO 70), che porta con sé anche i client già connessi verso la scena `Game`. |
+
+```
+Giocatore preme "Host" nel Menu
+      |
+MainMenu.StartHost (83)
+      |
+HostSingleton.Instance.GameManager.StartHostAsync()
+      |
+      v
+CreateAllocationAsync (85) --------> [server Relay di Unity]
+      |  riserva risorse per maxConnections giocatori
+      v
+GetJoinCodeAsync (86) --------------> joinCode (per ora solo loggato)
+      |
+      v
+transport.SetRelayServerData (87)   <- il NetworkManager ora "sa" passare da Relay
+      |
+      v
+NetworkManager.Singleton.StartHost() (88)   <- questa istanza è Host: server + client
+      |
+      v
+NetworkManager.Singleton.SceneManager.LoadScene("Game") (89)   <- tutti i client connessi seguono
+```
+
+> **Esempio stupido**: prenotare un tavolo al ristorante tramite un centralino (Relay) invece di dare il proprio indirizzo di casa agli invitati. Il centralino (85) ti dà un numero di prenotazione da comunicare agli amici (86, il join code); da quel momento tutte le chiamate passano dal centralino, non serve che gli amici sappiano dove abiti davvero (87). Solo quando il tavolo è confermato apri davvero il ristorante (88) e fai accomodare tutti nella sala giusta (89).
+
+**Cosa manca ancora, e sarà probabilmente il prossimo passo**: un bottone "Join" nel Menu che chieda il `joinCode` all'utente e lo passi a un `ClientGameManager.StartClientAsync` simmetrico (che oggi non esiste), usando `JoinAllocationAsync` invece di `CreateAllocationAsync`.
 
 #### Diagramma del bootstrap
 
@@ -114,6 +164,8 @@ ApplicationController (scena NetBootstrap)
       |  Start(): DontDestroyOnLoad, rileva dedicated server (61)
       |
       |-- dedicated server (62): stub, nessuna auth
+      |
+      |-- (SEMPRE, PRIMA del ramo client) Instantiate(HostSingleton) + createHost() (64)
       |
       \-- client (63): Instantiate(ClientSingleton) -----> ClientSingleton.createClient (68)
                                                                     |
@@ -130,9 +182,15 @@ ApplicationController (scena NetBootstrap)
                                                                     |
                                                           risale come bool "authenticated"
                                                                     |
-      Instantiate(HostSingleton) + createHost() (64, SEMPRE) <------|
-                                                                    |
                             se authenticated == true (65): goToMenu() (70) -> scena "Menu"
+                                                                    |
+                                     utente preme "Host" -> MainMenu.StartHost (83, §2.5)
+                                                                    |
+                                     HostSingleton.Instance.GameManager.StartHostAsync()
+                                                                    |
+                                     Relay: CreateAllocationAsync + GetJoinCodeAsync (85-86)
+                                                                    |
+                                     StartHost() + LoadScene("Game") di rete (88-89)
 ```
 
 ---
@@ -149,6 +207,8 @@ Componente da mettere su un `Canvas` con due bottoni UI:
 > **Esempio stupido**: per testare in locale, avvii due istanze del gioco (due finestre Editor/Build): una preme "Host" (apre la partita), l'altra preme "Join" (si siede al tavolo). Se ne avvii una terza e preme "Join", si aggiunge un terzo giocatore allo stesso tavolo.
 
 Non c'è validazione, IP hardcoded o matchmaking: è la versione minima per testare la sincronizzazione in locale.
+
+> **Stato attuale**: `ConnectionButtons` non è più agganciato a nessun bottone nelle scene attuali — il bottone "Host" del Menu ora chiama `MainMenu.StartHost` (FLUSSO 83, §2.5), che passa da Relay invece che da un IP diretto. Il file resta nel progetto come riferimento/rete di sicurezza per test locali rapidi (due istanze Editor sulla stessa macchina, senza bisogno di Relay), ma il percorso "di produzione" ora è quello descritto in §2.5.
 
 ---
 
@@ -480,7 +540,15 @@ Riferimento rapido, in ordine numerico. "∞" = catena locale a `ClientNetworkTr
 | 78 | `HostSingleton.cs` | Pattern singleton `Instance` |
 | 79 | `HostSingleton.cs` | `Start`: `DontDestroyOnLoad` |
 | 80 | `HostSingleton.cs` | `createHost`: crea `HostGameManager` |
-| 81 | `HostGameManager.cs` | Classe placeholder, ancora vuota |
+| 81 | `HostGameManager.cs` | Non più placeholder: `StartHostAsync` avvia davvero la sessione (Relay) |
+| 82 | `HostSingleton.cs` | `GameManager` diventa proprietà pubblica, leggibile da `MainMenu` |
+| 83 | `MainMenu.cs` | `StartHost()`, agganciato al bottone "Host" del Menu |
+| 84 | `HostGameManager.cs` | Campi `allocation`/`joinCode`/`gameSceneName`/`maxConnections` |
+| 85 | `HostGameManager.cs` | `StartHostAsync`: `Relay.Instance.CreateAllocationAsync` |
+| 86 | `HostGameManager.cs` | `StartHostAsync`: `Relay.Instance.GetJoinCodeAsync` |
+| 87 | `HostGameManager.cs` | `StartHostAsync`: configura `UnityTransport` con `RelayServerData` |
+| 88 | `HostGameManager.cs` | `StartHostAsync`: `NetworkManager.Singleton.StartHost()` |
+| 89 | `HostGameManager.cs` | `StartHostAsync`: `NetworkManager.Singleton.SceneManager.LoadScene("Game")` |
 
 ---
 
@@ -631,6 +699,36 @@ private void OnTriggerEnter2D(Collider2D other)
 }
 ```
 
+### 7.10 Avvio sessione tramite Relay (niente IP diretto)
+
+Quando l'host e i client non sono sulla stessa rete locale e non puoi contare su IP pubblici/port forwarding (praticamente sempre, fuori da un test in LAN). Vedi §2.5 per l'implementazione completa.
+
+```csharp
+public async Task StartHostAsync(int maxConnections)
+{
+    Allocation allocation = await Relay.Instance.CreateAllocationAsync(maxConnections);
+    string joinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
+    // ... mostra joinCode all'utente, cosi' possa condividerlo ...
+
+    var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+    transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
+
+    NetworkManager.Singleton.StartHost();
+}
+
+public async Task<bool> StartClientAsync(string joinCode)
+{
+    JoinAllocation allocation = await Relay.Instance.JoinAllocationAsync(joinCode);
+
+    var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+    transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
+
+    return NetworkManager.Singleton.StartClient();
+}
+```
+
+Il ramo `StartClientAsync` (con `JoinAllocationAsync` al posto di `CreateAllocationAsync`) è simmetrico ma **non ancora scritto** in questo progetto: è il prossimo passo naturale per completare il flusso "Join" nel Menu.
+
 ---
 
 ## 8. Checklist mentale per ogni nuovo componente di rete
@@ -669,4 +767,4 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
 
 ---
 
-*Documento generato a partire dai commenti `[FLUSSO N]` presenti nel codice sorgente. Se aggiungi nuove funzionalità, continua la numerazione da 82 in poi e aggiorna la tabella in §6.*
+*Documento generato a partire dai commenti `[FLUSSO N]` presenti nel codice sorgente. Se aggiungi nuove funzionalità, continua la numerazione da 90 in poi e aggiorna la tabella in §6.*

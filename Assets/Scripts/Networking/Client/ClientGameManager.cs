@@ -4,6 +4,10 @@ using System.Threading.Tasks;
 using Unity.Services.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+// AuthState (sotto) e' un enum ANNIDATO dentro AuthenticationWrapper (FLUSSO 77):
+// senza questo "using static" andrebbe scritto per esteso come
+// AuthenticationWrapper.AuthState ad ogni utilizzo. Senza, il progetto non compilava.
+using static AuthenticationWrapper;
 
 /// <summary>
 /// Classe C# pura (non un MonoBehaviour: niente Update/eventi Unity, e' pensata
