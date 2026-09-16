@@ -45,17 +45,17 @@ public class ApplicationController : MonoBehaviour
         }
         else
         {
-            // [FLUSSO 64] L'HostSingleton viene creato SEMPRE, anche per un client puro
+            // [FLUSSO 63] L'HostSingleton viene creato SEMPRE, anche per un client puro
             // che non ospitera' mai nessuno: e' preparazione per quando questa stessa
             // istanza dovesse diventare Host in seguito (es. premendo "Host" nel menu,
-            // MainMenu.StartHost, FLUSSO 83). Spostato PRIMA del ramo client (FLUSSO 63,
+            // MainMenu.StartHost, FLUSSO 83). Spostato PRIMA del ramo client (FLUSSO 64,
             // sotto): createHost() e' sincrono e non dipende in alcun modo dall'esito
             // dell'autenticazione, quindi non ha senso farlo aspettare in mezzo a un
             // await. Cosi' hostSingleton.Instance (FLUSSO 78) e' pronto il prima possibile,
             // invece che solo dopo l'intero giro di rete dell'autenticazione client.
             HostSingleton hostSingleton = Instantiate(hostPrefab);
             hostSingleton.createHost();
-            // [FLUSSO 63] Ramo client: si istanzia il prefab ClientSingleton e si
+            // [FLUSSO 64] Ramo client: si istanzia il prefab ClientSingleton e si
             // aspetta (await) l'intera procedura di autenticazione. "authenticated"
             // riflette il valore restituito da ClientGameManager.initAsync (FLUSSO 69),
             // che a sua volta dipende da AuthenticationWrapper.doAuth (FLUSSO 72-74).

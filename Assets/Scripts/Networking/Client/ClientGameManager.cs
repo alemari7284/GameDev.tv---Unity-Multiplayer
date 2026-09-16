@@ -27,7 +27,7 @@ public class ClientGameManager
     {
         await UnityServices.InitializeAsync();
 
-        AuthState authState = await AuthenticationWrapper.doAuth();
+        AuthState authState = await doAuth();
 
         if (authState == AuthState.Authenticated)
         {

@@ -119,6 +119,3 @@ public static class AuthenticationWrapper
         Timeout
     }
 }
-// NOTA: la parentesi di chiusura sopra e' stata aggiunta ora perche' mancava nel
-// file (l'enum era stato spostato dentro la classe "static class AuthenticationWrapper"
-// senza richiudere il blocco): senza, il file non compilava affatto in Unity.

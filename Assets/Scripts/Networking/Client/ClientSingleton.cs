@@ -47,14 +47,10 @@ public class ClientSingleton : MonoBehaviour
     // [FLUSSO 68] Crea il ClientGameManager (new, non Instantiate: e' una classe
     // C# pura, non un componente Unity) e gli delega subito l'intera procedura di
     // autenticazione tramite initAsync (FLUSSO 69). Il bool restituito risale la
-    // catena fino ad ApplicationController.launchInMode (FLUSSO 63).
+    // catena fino ad ApplicationController.launchInMode (FLUSSO 64).
     public async Task<bool> createClient()
     {
         gameManager = new ClientGameManager();
-
         return await gameManager.initAsync();
     }
-
-
-
 }
