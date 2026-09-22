@@ -22,26 +22,28 @@ finale prima dell'inizio, per comodità di set), ma lo SPETTATORE le vede in un 
 partita ti si racconta da sola come una storia, dall'accensione del gioco fino a quando una
 moneta ricompare in un altro punto della mappa.
 
-Due eccezioni da ricordare, altrimenti ti confondi:
+Un'eccezione da ricordare, altrimenti ti confondi: `ClientNetworkTransform.cs` ha una numerazione
+TUTTA SUA (`FLUSSO 0` → `8`), diversa da quella del gameplay. È come un capitolo a parte che
+spiega "come si muove un oggetto in rete" — le altre parti del gioco lo richiamano come un
+pacchetto chiuso ("vedi FLUSSO 0-8 di quel file"), non c'entra con i numeri del resto.
 
-1. `ClientNetworkTransform.cs` ha una numerazione TUTTA SUA (`FLUSSO 0` → `8`), diversa da quella
-   del gameplay. È come un capitolo a parte che spiega "come si muove un oggetto in rete" — le
-   altre parti del gioco lo richiamano come un pacchetto chiuso ("vedi FLUSSO 0-8 di quel file"),
-   non c'entra con i numeri del resto.
-2. `FLUSSO 60` → `81` (avvio dell'app + login) sono in realtà le prime cose che succedono
-   quando apri il gioco — PRIMA ancora di `FLUSSO 0` — ma sono numerate "alte" solo perché sono
-   state aggiunte dopo, e la regola del progetto dice "continua a numerare da dove eri arrivato,
-   non tornare indietro a rinumerare tutto". Quindi: numero alto ≠ successo dopo. Qui, numero
-   alto = scritto dopo, ma eseguito prima.
+Il capitolo sull'**avvio dell'app e il login** (§2), invece, oggi **non usa più** questa
+numerazione `FLUSSO`: quei file sono stati riscritti a settembre 2026 per stare al passo con un
+cambiamento importante nei servizi online di Unity (te lo spiego per bene in §2.6), e tenere dei
+numeri `FLUSSO` legati a un codice che non esiste più ti avrebbe solo confuso. Quel capitolo è
+quindi organizzato per file, uno alla volta, col codice vero dentro — proprio come il resto di
+questo documento, solo senza i numeretti.
 
 **Indice di questo documento**:
 
 1. Concetti base di Netcode, spiegati come a un bambino (§1)
-2. Avvio dell'app e login (`FLUSSO 60 → 81`) — cosa succede nell'istante in cui apri il gioco (§2)
+2. Avvio dell'app, login e avvio della partita — organizzato per file, SENZA numerazione FLUSSO
+   (§2 — cosa succede nell'istante in cui apri il gioco; include §2.6, la spiegazione dettagliata
+   di come e perché questo capitolo diverge dal corso)
 3. Il vecchio sistema "Host/Join" con IP diretto, usato solo per test (§3)
 4. Le fondamenta: come si sincronizza il movimento in rete (§4)
 5. Il vero flusso di gioco (`FLUSSO 0 → 59`): input → mira → sparo → danno → vita → monete (§5)
-6. Tabella riassuntiva di TUTTI i FLUSSO, per cercare velocemente (§6)
+6. Tabella riassuntiva di TUTTI i FLUSSO di gameplay, per cercare velocemente (§6)
 7. Ricette pronte da copiare in un gioco nuovo (§7)
 8. Checklist mentale prima di scrivere codice di rete (§8)
 9. Glossario (§9)
@@ -112,7 +114,7 @@ Tienilo a mente: da qui in poi vedrai sempre queste 4 parole (`NetworkVariable`,
 
 ---
 
-## 2. Avvio dell'app e login (`FLUSSO 60 → 81`)
+## 2. Avvio dell'app, login, e avvio della partita in rete
 
 Questa è la PRIMA cosa che succede quando premi "Play": prima ancora del menu, prima ancora del
 bottone "Host". Vive nella scena `NetBootstrap`, che si carica per prima di tutte.
@@ -132,19 +134,18 @@ bottone "Host". Vive nella scena `NetBootstrap`, che si carica per prima di tutt
 - `Assets/Scripts/Networking/Client/ClientSingleton.cs` + `ClientGameManager.cs`
 - `Assets/Scripts/Networking/Client/AuthenticationWrapper.cs`
 - `Assets/Scripts/Networking/Host/HostSingleton.cs` + `HostGameManager.cs`
+- `Assets/Scripts/UI/MainMenu.cs`
+
+> ⚠️ **IMPORTANTE prima di leggere questa sezione**: qui NON troverai più i commenti
+> `// [FLUSSO N]` che vedi ovunque nel resto del progetto (§5). Il motivo è semplice: questi
+> file sono stati riscritti a settembre 2026, perché nel frattempo Unity ha cambiato le regole
+> del gioco (letteralmente) su come si fa networking. Il corso che stai seguendo è fermo a
+> gennaio 2026 e mostra ancora il "vecchio" modo di fare le cose. **§2.6, più sotto, spiega
+> TUTTO questo nel dettaglio**, con il codice vecchio e quello nuovo messi uno accanto all'altro:
+> leggilo con calma, è probabilmente la parte più importante di tutto il documento se stai
+> seguendo il corso in questo periodo.
 
 ### 2.1 `ApplicationController.cs` — il primo script che parte in assoluto
-
-| FLUSSO | In parole facili facili |
-|---|---|
-| **60** | Ci sono due "modelli" di partenza (`clientPrefab` e `hostPrefab`): sono come due stampi da cui, più sotto, si crea o un client o un host. |
-| **61** | Appena il gioco parte: "non distruggermi quando cambio scena" (`DontDestroyOnLoad`) e controllo se questo computer ha una scheda grafica. Se NON ce l'ha, è un dedicated server (un computer "cieco" che serve solo a ospitare la partita, come un server internet, non un giocatore). |
-| **62** | Se è un dedicated server: per ora non facciamo niente (uno "sticazzi" vuoto, da riempire in futuro). |
-| **64** | SEMPRE, anche se sei solo un giocatore normale: viene creato un `HostSingleton` (pronto nel caso tu debba diventare host più avanti, es. premendo "Host" nel menu). |
-| **63** | Se NON è un dedicated server (cioè sei un giocatore vero): si crea un `ClientSingleton` e si aspetta che finisca il login (`createClient()`). |
-| **65** | Solo se il login è andato bene, si va al Menu. Se fallisce, per ora il gioco resta bloccato lì, senza un messaggio d'errore (un difetto noto, da sistemare in futuro). |
-
-**Il codice vero** (`Assets/Scripts/Networking/ApplicationController.cs`):
 
 ```csharp
 using System.Collections;
@@ -152,8 +153,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 
-// [FLUSSO 60] I due prefab sono i "capostipiti" delle due catene di singleton:
-// ClientSingleton (lato giocatore) e HostSingleton (lato host).
 public class ApplicationController : MonoBehaviour
 {
     [SerializeField] private ClientSingleton clientPrefab;
@@ -161,10 +160,10 @@ public class ApplicationController : MonoBehaviour
 
     private async Task Start()
     {
-        // [FLUSSO 61] DontDestroyOnLoad fa sopravvivere tutto al cambio scena verso il Menu.
+        // DontDestroyOnLoad fa sopravvivere tutto al cambio scena verso il Menu.
         DontDestroyOnLoad(gameObject);
 
-        // Un dedicated server non ha una GPU/finestra: è cosi' che distinguiamo
+        // Un dedicated server non ha una GPU/finestra: e' cosi' che distinguiamo
         // a runtime un build server (headless) da un client giocabile.
         bool isDedicatedServer = SystemInfo.graphicsDeviceType ==
             UnityEngine.Rendering.GraphicsDeviceType.Null; //a ded. server has no graphics
@@ -175,21 +174,21 @@ public class ApplicationController : MonoBehaviour
     {
         if (isDedicatedServer)
         {
-            // [FLUSSO 62] Ramo dedicated server: ancora uno stub vuoto.
+            // Ramo dedicated server: ancora uno stub vuoto.
         }
         else
         {
-            // [FLUSSO 63] L'HostSingleton viene creato SEMPRE, anche per un client puro,
+            // L'HostSingleton viene creato SEMPRE, anche per un client puro,
             // per essere pronti se questa istanza dovesse diventare Host in seguito.
             HostSingleton hostSingleton = Instantiate(hostPrefab);
             hostSingleton.createHost();
 
-            // [FLUSSO 64] Ramo client: si istanzia ClientSingleton e si aspetta
+            // Ramo client: si istanzia ClientSingleton e si aspetta
             // l'intera procedura di autenticazione.
             ClientSingleton clientSingleton = Instantiate(clientPrefab);
             bool authenticated = await clientSingleton.createClient();
 
-            // [FLUSSO 65] Solo se autenticato, si passa al menu vero.
+            // Solo se autenticato, si passa al menu vero.
             if (authenticated)
             {
                 clientSingleton.gameManager.goToMenu();
@@ -199,11 +198,25 @@ public class ApplicationController : MonoBehaviour
 }
 ```
 
-> **Nota sull'ordine 64→63 nella tabella vs 63→64 nel codice**: nel codice, la creazione
-> dell'host viene PRIMA del login del client (perché è un'operazione istantanea, non ha senso
-> farla aspettare). Nella tabella li abbiamo lasciati nell'ordine "di significato" (63 = ramo
-> client, 64 = host sempre creato). Non è un errore: è solo che il codice esegue prima la parte
-> "veloce e senza attese" (host) e poi quella "lenta e con un `await`" (client).
+In parole facili facili:
+
+1. Ci sono due "modelli" di partenza (`clientPrefab` e `hostPrefab`): sono come due stampi da cui,
+   più sotto, si crea o un client o un host.
+2. Appena il gioco parte: "non distruggermi quando cambio scena" (`DontDestroyOnLoad`) e controllo
+   se questo computer ha una scheda grafica. Se NON ce l'ha, è un dedicated server (un computer
+   "cieco" che serve solo a ospitare la partita, come un server internet, non un giocatore).
+3. Se è un dedicated server: per ora non facciamo niente (uno "sticazzi" vuoto, da riempire in
+   futuro).
+4. SEMPRE, anche se sei solo un giocatore normale: viene creato un `HostSingleton` (pronto nel
+   caso tu debba diventare host più avanti, es. premendo "Host" nel menu). Questo viene fatto
+   PRIMA del login perché è un'operazione istantanea (nessun `await`): non ha senso farla
+   aspettare in mezzo al login, che invece richiede tempo.
+5. Solo dopo, si crea un `ClientSingleton` e si aspetta che finisca il login (`createClient()`).
+6. Solo se il login è andato bene, si va al Menu. Se fallisce, per ora il gioco resta bloccato lì,
+   senza un messaggio d'errore (un difetto noto, da sistemare in futuro).
+
+**Non toccato dalla migrazione**: questo file non parla mai direttamente con Relay/Lobby/
+Matchmaker/Sessions, quindi è identico, parola per parola, a quello del corso.
 
 ### 2.2 `ClientSingleton.cs` + `ClientGameManager.cs` — il "borsone" del client
 
@@ -211,13 +224,12 @@ public class ApplicationController : MonoBehaviour
 `ClientGameManager`, che è pura logica C# (creata con `new`, non con `Instantiate`, quindi non
 potrebbe esistere da sola come oggetto di scena).
 
-**`ClientSingleton.cs`** (FLUSSO 66-68):
+**`ClientSingleton.cs`**:
 
 ```csharp
 public class ClientSingleton : MonoBehaviour
 {
-    // [FLUSSO 66] Pattern "singleton pigro": lo cerchiamo solo quando serve,
-    // non subito in Awake.
+    // Pattern "singleton pigro": lo cerchiamo solo quando serve, non subito in Awake.
     private static ClientSingleton instance;
     public static ClientSingleton Instance
     {
@@ -238,11 +250,11 @@ public class ClientSingleton : MonoBehaviour
 
     private void Start()
     {
-        // [FLUSSO 67] Stesso motivo del FLUSSO 61: deve sopravvivere al cambio scena.
+        // Stesso motivo di ApplicationController: deve sopravvivere al cambio scena.
         DontDestroyOnLoad(gameObject);
     }
 
-    // [FLUSSO 68] Crea il ClientGameManager e gli affida subito il login.
+    // Crea il ClientGameManager e gli affida subito il login.
     public async Task<bool> createClient()
     {
         gameManager = new ClientGameManager();
@@ -251,15 +263,23 @@ public class ClientSingleton : MonoBehaviour
 }
 ```
 
-**`ClientGameManager.cs`** (FLUSSO 69-70):
+> **Esempio stupido**: `ClientSingleton` è il portaborse che tiene in mano la valigetta
+> (`ClientGameManager`) del vero impiegato (la logica di login). Il portaborse non fa nulla di
+> intelligente da solo: serve solo perché la valigetta, da sola, in scena, non saprebbe stare
+> in piedi.
+
+**`ClientGameManager.cs`** — questo file è **in gran parte invariato** dalla migrazione: solo
+l'ultimo metodo (`startClientAsync`) è cambiato, e lo vediamo per intero, non a pezzi, per non
+confonderti:
 
 ```csharp
 public class ClientGameManager
 {
     private const string menuSceneName = "Menu";
+    private ISession session;
 
-    // [FLUSSO 69] UnityServices.InitializeAsync() va chiamata UNA volta per processo
-    // prima di usare qualsiasi servizio online (login, Relay, ecc.).
+    // UnityServices.InitializeAsync() va chiamata UNA volta per processo
+    // prima di usare qualsiasi servizio online (login, Sessions, ecc.).
     public async Task<bool> initAsync()
     {
         await UnityServices.InitializeAsync();
@@ -273,37 +293,51 @@ public class ClientGameManager
         return false;
     }
 
-    // [FLUSSO 70] Chiamato solo se il login è andato bene: carica la scena "Menu".
+    // Chiamato solo se il login è andato bene: carica la scena "Menu".
     public void goToMenu()
     {
         SceneManager.LoadScene(menuSceneName);
     }
+
+    // QUESTO metodo è cambiato con la migrazione: vedi §2.6.4 per il confronto
+    // con la versione del corso (che usava Relay.Instance.JoinAllocationAsync).
+    public async Task startClientAsync(string joinCode)
+    {
+        try
+        {
+            session = await MultiplayerService.Instance.JoinSessionByCodeAsync(joinCode);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+        }
+    }
 }
 ```
 
-> **Esempio stupido**: `ClientSingleton` è il portaborse che tiene in mano la valigetta
-> (`ClientGameManager`) del vero impiegato (la logica di login). Il portaborse non fa nulla di
-> intelligente da solo: serve solo perché la valigetta, da sola, in scena, non saprebbe stare
-> in piedi.
+`initAsync` e `goToMenu` sono identici al corso. `startClientAsync` invece oggi fa un'unica
+chiamata (`JoinSessionByCodeAsync`) al posto delle quattro righe che il corso mostra con Relay
+diretto — il dettaglio completo, riga per riga, è in §2.6.4.
 
 ### 2.3 `AuthenticationWrapper.cs` — il buttafuori del login
 
 Questa classe è `static`: non esiste "un'istanza per ogni giocatore", esiste UNA SOLA copia per
-tutto il gioco, condivisa da chiunque la usi.
+tutto il gioco, condivisa da chiunque la usi. **Questo file è identico al corso**: Authentication
+non fa parte della fusione di pacchetti spiegata in §2.6, quindi non c'era nulla da migrare qui.
 
 ```csharp
-// [FLUSSO 71] Essendo la classe "static", authState e' un solo valore condiviso
-// da tutto il processo, che sopravvive ai cambi scena.
 public static class AuthenticationWrapper
 {
+    // Essendo la classe "static", authState e' un solo valore condiviso
+    // da tutto il processo, che sopravvive ai cambi scena.
     public static AuthState authState { get; private set; }
 
-    // [FLUSSO 72] Prima guardia: se sei già autenticato, non rifare il login.
+    // Prima guardia: se sei già autenticato, non rifare il login.
     public static async Task<AuthState> doAuth(int maxTries = 5)
     {
         if (authState == AuthState.Authenticated) return authState;
 
-        // [FLUSSO 73] Seconda guardia: se un altro sta già facendo login,
+        // Seconda guardia: se un altro sta già facendo login,
         // non partire con un secondo tentativo in parallelo: aspetta e basta.
         if (authState == AuthState.Authenticating)
         {
@@ -312,12 +346,12 @@ public static class AuthenticationWrapper
             return authState;
         }
 
-        // [FLUSSO 74] Nessun login in corso ne' gia' fatto: si parte per davvero.
+        // Nessun login in corso ne' gia' fatto: si parte per davvero.
         await SignInAnonimouslyAsync(maxTries);
         return authState;
     }
 
-    // [FLUSSO 75] Attesa passiva: controlla ogni 200ms se il login e' finito,
+    // Attesa passiva: controlla ogni 200ms se il login e' finito,
     // invece di far partire un secondo tentativo.
     private static async Task<AuthState> authenticating()
     {
@@ -328,7 +362,7 @@ public static class AuthenticationWrapper
         return authState;
     }
 
-    // [FLUSSO 76] Vera logica di login: prova, ritenta, gestisce gli errori.
+    // Vera logica di login: prova, ritenta, gestisce gli errori.
     private static async Task SignInAnonimouslyAsync(int maxRetries)
     {
         authState = AuthState.Authenticating;
@@ -366,7 +400,7 @@ public static class AuthenticationWrapper
         }
     }
 
-    // [FLUSSO 77] I 5 stati possibili. NonAuthenticated e' quello di partenza.
+    // I 5 stati possibili. NonAuthenticated e' quello di partenza.
     public enum AuthState
     {
         NonAuthenticated,
@@ -387,15 +421,15 @@ porta è ancora chiusa perché nessuno ha girato la chiave: tu bussi (il `while`
 niente, perché la condizione per entrare non si è mai avverata.
 
 > **Esempio stupido sul login**: `doAuth` è un buttafuori con tre domande in testa, in ordine:
-> "sei già dentro? (72)" → "c'è già qualcuno che sta entrando adesso? aspetta il suo turno (73)"
-> → "nessuno dei due? allora prova ad entrare tu adesso (74)".
+> "sei già dentro?" → "c'è già qualcuno che sta entrando adesso? aspetta il suo turno" →
+> "nessuno dei due? allora prova ad entrare tu adesso".
 
 ### 2.4 `HostSingleton.cs` + `HostGameManager.cs` — il gemello lato host
 
 ```csharp
 public class HostSingleton : MonoBehaviour
 {
-    // [FLUSSO 78] Stesso pattern "singleton pigro" di ClientSingleton (FLUSSO 66).
+    // Stesso pattern "singleton pigro" di ClientSingleton.
     private static HostSingleton instance;
     public static HostSingleton Instance
     {
@@ -412,18 +446,17 @@ public class HostSingleton : MonoBehaviour
         }
     }
 
-    // [FLUSSO 82] Proprieta' pubblica: serve a MainMenu.StartHost (FLUSSO 83)
-    // per raggiungere HostGameManager dall'esterno.
+    // Proprieta' pubblica: serve a MainMenu.StartHost per raggiungere
+    // HostGameManager dall'esterno.
     public HostGameManager GameManager { get; private set; }
 
     private void Start()
     {
-        // [FLUSSO 79] Stesso motivo del FLUSSO 67.
         DontDestroyOnLoad(gameObject);
     }
 
-    // [FLUSSO 80] Qui non c'e' ancora nessuna logica asincrona: HostGameManager
-    // era vuoto, quindi ci si limita a istanziarlo.
+    // Qui non c'e' nessuna logica asincrona: si crea solo l'oggetto,
+    // pronto ma inerte finche' non si preme davvero "Host" (§2.5).
     public void createHost()
     {
         GameManager = new HostGameManager();
@@ -431,10 +464,14 @@ public class HostSingleton : MonoBehaviour
 }
 ```
 
-### 2.5 `MainMenu.cs` + `HostGameManager.StartHostAsync` — quando premi "Host" per davvero
+**Non toccato dalla migrazione** (a parte i vecchi commenti `FLUSSO`, tolti perché non
+corrispondevano più a nulla): questo file non chiama nessuna API di rete direttamente.
 
-Fino a qui `HostGameManager` era una scatola vuota. Da qui in poi, premendo "Host" nel menu, si
-apre DAVVERO una partita, usando **Unity Relay** invece di un IP diretto.
+### 2.5 `MainMenu.cs` + `HostGameManager.StartHostAsync`/`ClientGameManager.startClientAsync` — quando premi "Host" o "Join" per davvero
+
+Da qui in poi, premendo "Host" nel menu, si apre DAVVERO una partita; premendo "Join" con un
+codice valido, ci si unisce a una partita già aperta. Sotto il cofano si passa dalle **Sessions di
+Unity Multiplayer Services**, che a loro volta usano **Relay** invece di un IP diretto.
 
 > **Perché non un IP diretto?** Un IP diretto richiede che il tuo computer sia raggiungibile da
 > internet — quasi mai vero (router, firewall, NAT di mezzo). Relay fa da "postino neutrale": sia
@@ -450,22 +487,192 @@ apre DAVVERO una partita, usando **Unity Relay** invece di un IP diretto.
 ```csharp
 public class MainMenu : MonoBehaviour
 {
-    // [FLUSSO 83] Metodo agganciato all'OnClick del bottone "Host" nella scena Menu.
+    [SerializeField] private TMP_InputField joinCodeField;
+
+    // Agganciato all'OnClick del bottone "Host" nella scena Menu.
     // "async void" va bene SOLO qui, perche' e' un event handler UI: nessuno
     // "aspetta" il completamento.
     public async void StartHost()
     {
         await HostSingleton.Instance.GameManager.StartHostAsync();
     }
+
+    // Agganciato all'OnClick del bottone "Join": legge il codice digitato
+    // dall'utente in un campo di testo (TMP_InputField) e lo passa al client.
+    public async void startClient()
+    {
+        await ClientSingleton.Instance.gameManager.startClientAsync(joinCodeField.text);
+    }
 }
 ```
 
-**`HostGameManager.cs`** — la parte più interessante di tutto il capitolo 2:
+**`HostGameManager.cs`** — la parte più interessante di tutto il capitolo 2, e quella che è
+cambiata di più con la migrazione:
 
 ```csharp
 public class HostGameManager
 {
-    // [FLUSSO 84] Stato della sessione Relay corrente.
+    private ISession session;
+    private const string gameSceneName = "Game";
+    private const int maxConnections = 20;
+
+    public async Task StartHostAsync()
+    {
+        try
+        {
+            // Configuriamo la sessione: fino a maxConnections giocatori,
+            // e "usa il Relay per farli parlare tra loro".
+            var options = new SessionOptions
+            {
+                MaxPlayers = maxConnections
+            }.WithRelayNetwork();
+
+            // UNA SOLA chiamata fa tutto quello che nel corso richiedeva 4 passi
+            // separati: alloca il Relay, genera il join code, configura il
+            // transport, e avvia NetworkManager come Host. Vedi §2.6.3 per il
+            // confronto completo col codice del corso.
+            session = await MultiplayerService.Instance.CreateSessionAsync(options);
+
+            // session.Code e' gia' pronto qui: e' il join code da dare agli amici.
+            Debug.Log($"Session created. Join code: {session.Code}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            return;
+        }
+
+        // Cambio scena "di rete": porta con se' anche i client gia' connessi.
+        NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
+    }
+}
+```
+
+Diagramma aggiornato (il vecchio, con Relay chiamato a mano, lo trovi in §2.6.1 per confronto):
+
+```
+Giocatore preme "Host" nel Menu
+      |
+MainMenu.StartHost
+      |
+HostSingleton.Instance.GameManager.StartHostAsync()
+      |
+      v
+MultiplayerService.Instance.CreateSessionAsync(
+    new SessionOptions{ MaxPlayers = 20 }.WithRelayNetwork()
+)  ------------------------------------> [Unity Multiplayer Services]
+      |  alloca il Relay, genera il join code,
+      |  configura il transport, avvia NetworkManager.StartHost()
+      |  TUTTO IN UNA CHIAMATA SOLA
+      v
+session.Code  --------------------------> join code (per ora solo loggato)
+      |
+      v
+NetworkManager.Singleton.SceneManager.LoadScene("Game")   <- tutti i client connessi seguono
+```
+
+> **Esempio stupido**: nel corso, aprire una partita era come telefonare tu stesso al centralino
+> (Relay), prendere il numero di prenotazione, chiamare il cameriere (`UnityTransport`) per
+> dirglielo a voce, e SOLO POI sederti al tavolo (`StartHost()`). Con le Sessions, è come dire
+> "un tavolo per 20, grazie" al maître all'ingresso: è lui (Unity Multiplayer Services) a
+> occuparsi da solo di centralino, cameriere e sistemazione del tavolo, e a tornare da te con il
+> numero di prenotazione già pronto (`session.Code`).
+
+**Cosa manca ancora**: un pezzo di UI che mostri `session.Code` a schermo (oggi è solo loggato in
+console — l'utente deve aprire la Console dell'Editor per leggerlo), e la gestione di
+`session.LeaveAsync()` quando si vuole abbandonare la partita.
+
+### 2.6 La migrazione, spiegata per bene: cosa dice il corso, cosa fa questo progetto, e perché
+
+Se stai guardando le lezioni del corso GameDev.tv (registrate/aggiornate a **gennaio 2026**)
+mentre lavori su QUESTO progetto oggi (**settembre 2026**), a un certo punto il codice che vedi
+sullo schermo del corso e il codice che hai davanti nell'Editor cominciano a non coincidere più.
+Non è un errore tuo, e non hai saltato nessuna lezione: nel frattempo **Unity ha cambiato le
+regole** su come si fa networking coi suoi servizi online. Qui sotto, passo per passo, cosa è
+successo e cosa significa per te.
+
+#### 2.6.1 Cosa dice il corso (gennaio 2026)
+
+Il corso costruisce il multiplayer chiamando **direttamente** dei servizi online di Unity Gaming
+Services (UGS), ciascuno con il proprio pacchetto separato installato via Package Manager:
+
+- **Relay** (`com.unity.services.relay`): fa passare i dati tra host e client senza bisogno di IP
+  pubblici. Nel corso lo chiami tu stesso: `Relay.Instance.CreateAllocationAsync(...)`,
+  `.GetJoinCodeAsync(...)`, `.JoinAllocationAsync(...)`.
+- **Lobby** (`com.unity.services.lobby`), **Matchmaker** (`com.unity.services.matchmaker`),
+  **Multiplay** (`com.unity.services.multiplay`): altri tre servizi della stessa famiglia, che il
+  corso installa e userà più avanti per liste partite, matchmaking e dedicated server.
+
+Dopo aver chiamato Relay a mano, il corso configura anche a mano il "trasporto" di rete
+(`UnityTransport`) e solo alla fine chiama `NetworkManager.Singleton.StartHost()`/`StartClient()`.
+Sono, in tutto, 4 passi separati, che devi orchestrare tu.
+
+#### 2.6.2 Cosa è cambiato nell'ecosistema Unity (fino a settembre 2026)
+
+Tra gennaio e settembre 2026, Unity ha **deprecato** tutti e quattro questi pacchetti standalone
+(su Unity 6 e versioni successive, quella usata da questo progetto) e ha spostato le loro
+funzionalità dentro un **unico pacchetto nuovo**: `com.unity.services.multiplayer`. Questo
+pacchetto introduce un concetto nuovo chiamato **Session** (namespace C# `Unity.Services.Multiplayer`,
+classi principali `MultiplayerService`, `ISession`, `SessionOptions`): non è un servizio a sé, ma
+uno strato che ORCHESTRA Lobby, Relay e Matchmaker al posto tuo, dietro un'unica API.
+
+Le funzionalità di Lobby/Relay/Matchmaker non sono sparite: esistono ancora, ma "dentro" le
+Sessions — non li chiami più tu direttamente, uno per uno.
+
+**Il problema**: i pacchetti standalone vecchi e il pacchetto nuovo unificato **non possono stare
+installati insieme nello stesso progetto**. Se ci provi, Unity Package Manager si rifiuta con un
+errore chiaro:
+
+```
+The following package has been added:
+- Multiplayer Services (com.unity.services.multiplayer) version 2.2.3
+However, it is incompatible with the Unity Multiplayer Service SDK.
+Please remove the following package:
+- Multiplayer Services (com.unity.services.multiplayer) version 2.2.3
+If you wish to use the Unity Multiplayer Services SDK.
+```
+
+È esattamente l'errore che ha reso necessaria la migrazione descritta in questa sezione: il
+progetto aveva sia i pacchetti vecchi (installati seguendo il corso) sia il pacchetto nuovo
+(aggiunto in automatico dall'Editor, probabilmente dal Multiplayer Center), e i due non potevano
+convivere.
+
+#### 2.6.3 Cosa è cambiato in `Packages/manifest.json`
+
+**Prima** (come da corso):
+```json
+"com.unity.services.lobby": "1.3.0",
+"com.unity.services.matchmaker": "1.2.0",
+"com.unity.services.multiplay": "1.3.1",
+"com.unity.services.multiplayer": "2.2.3",
+"com.unity.services.relay": "1.2.0",
+```
+
+**Dopo** (in questo progetto):
+```json
+"com.unity.services.multiplayer": "2.2.3",
+```
+
+`com.unity.services.authentication` (il login) non compare in nessuna delle due liste: non è mai
+stato aggiunto a mano, perché è sempre stato installato in automatico come **dipendenza** — prima
+richiesta da `relay`/`lobby`/`matchmaker`, oggi richiesta direttamente da
+`com.unity.services.multiplayer`. Per questo `AuthenticationWrapper.cs` (§2.3) continua a
+funzionare senza che tu debba toccare nulla.
+
+#### 2.6.4 Cosa è cambiato in `HostGameManager.cs` — il confronto completo
+
+**Codice del corso** (Relay chiamato direttamente, 4 passi):
+
+```csharp
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
+using Unity.Networking.Transport.Relay;
+using Unity.Services.Core;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
+
+public class HostGameManager
+{
     private Allocation allocation;
     private string joinCode;
     private const string gameSceneName = "Game";
@@ -473,10 +680,9 @@ public class HostGameManager
 
     public async Task StartHostAsync()
     {
-        // [FLUSSO 85] Si chiede ai server Relay di Unity di riservare posto per
-        // fino a maxConnections giocatori. E' una chiamata di rete: puo' fallire.
         try
         {
+            await UnityServices.InitializeAsync();
             allocation = await Relay.Instance.CreateAllocationAsync(maxConnections);
         }
         catch (Exception e)
@@ -485,8 +691,6 @@ public class HostGameManager
             return;
         }
 
-        // [FLUSSO 86] Trasforma l'allocation in un codice breve, condivisibile
-        // con gli amici (per ora solo loggato, non ancora mostrato a schermo).
         try
         {
             joinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
@@ -498,52 +702,164 @@ public class HostGameManager
             return;
         }
 
-        // [FLUSSO 87] Si "istruisce" il transport di rete a passare da Relay.
         UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        RelayServerData relayServerData = new RelayServerData(allocation, "udp");
+        RelayServerData relayServerData = new RelayServerData(allocation, "dtls");
         transport.SetRelayServerData(relayServerData);
 
-        // [FLUSSO 88] Solo ORA si avvia davvero: questa istanza diventa Host
-        // (server + client insieme).
         NetworkManager.Singleton.StartHost();
-
-        // [FLUSSO 89] Cambio scena "di rete": porta con se' anche i client
-        // gia' connessi verso la scena "Game".
         NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
     }
 }
 ```
 
-Diagramma (uguale a quello della guida originale, per riferimento visivo veloce):
+**Codice di questo progetto** (Sessions, 1 passo):
 
-```
-Giocatore preme "Host" nel Menu
-      |
-MainMenu.StartHost (83)
-      |
-HostSingleton.Instance.GameManager.StartHostAsync()
-      |
-      v
-CreateAllocationAsync (85) --------> [server Relay di Unity]
-      |  riserva risorse per maxConnections giocatori
-      v
-GetJoinCodeAsync (86) --------------> joinCode (per ora solo loggato)
-      |
-      v
-transport.SetRelayServerData (87)   <- il NetworkManager ora "sa" passare da Relay
-      |
-      v
-NetworkManager.Singleton.StartHost() (88)   <- questa istanza è Host: server + client
-      |
-      v
-NetworkManager.Singleton.SceneManager.LoadScene("Game") (89)   <- tutti i client connessi seguono
+```csharp
+using Unity.Netcode;
+using Unity.Services.Multiplayer;
+
+public class HostGameManager
+{
+    private ISession session;
+    private const string gameSceneName = "Game";
+    private const int maxConnections = 20;
+
+    public async Task StartHostAsync()
+    {
+        try
+        {
+            var options = new SessionOptions
+            {
+                MaxPlayers = maxConnections
+            }.WithRelayNetwork();
+
+            session = await MultiplayerService.Instance.CreateSessionAsync(options);
+
+            Debug.Log($"Session created. Join code: {session.Code}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            return;
+        }
+
+        NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
+    }
+}
 ```
 
-**Cosa manca ancora**: un bottone "Join" nel Menu che chieda il `joinCode` e lo passi a un
-`ClientGameManager.StartClientAsync` (che oggi non esiste ancora), usando `JoinAllocationAsync`
-al posto di `CreateAllocationAsync` (vedi §7.10 per un esempio già pronto da copiare).
+Cosa corrisponde a cosa, passo per passo:
+
+| Nel corso, facevi... | Oggi, invece... |
+|---|---|
+| `Relay.Instance.CreateAllocationAsync(maxConnections)` | `MultiplayerService.Instance.CreateSessionAsync(options)`, con `options` che porta `MaxPlayers` e `.WithRelayNetwork()` |
+| `Relay.Instance.GetJoinCodeAsync(allocation.AllocationId)` | Non serve più chiamarlo a parte: `session.Code` è già pronto, disponibile subito dopo `CreateSessionAsync` |
+| Prendere `UnityTransport` dal `NetworkManager` e chiamare `SetRelayServerData(...)` | Non serve più: lo fa da sola la Session, grazie a `.WithRelayNetwork()` |
+| `NetworkManager.Singleton.StartHost()` | Non serve più chiamarlo: la Session avvia da sola `NetworkManager` come Host, appena è pronta |
+| `NetworkManager.Singleton.SceneManager.LoadScene(...)` | **Uguale a prima**: il cambio scena resta compito nostro, le Sessions non se ne occupano |
+
+Le due variabili `allocation` e `joinCode` del corso diventano un unico riferimento `session` (di
+tipo `ISession`), da cui si legge `session.Code` (il join code) e, se ti serve in futuro,
+`session.Id`, `session.PlayerCount`, `session.IsHost`, ecc.
+
+> **Fonte**: questo comportamento — che `.WithRelayNetwork()` "semplice" avvii da solo
+> `NetworkManager` — è confermato dalla documentazione ufficiale Unity sul Multiplayer Services
+> SDK. Esiste anche un pattern più avanzato in cui NON passi `.WithRelayNetwork()` subito e avvii
+> la rete a mano dopo, con `session.Network.StartDirectNetworkAsync(...)` — utile ad esempio se
+> vuoi aspettare che si connettano tutti i giocatori prima di aprire la partita — ma non serve in
+> questo progetto, che replica lo stesso comportamento "immediato" del corso.
+
+#### 2.6.5 Cosa è cambiato in `ClientGameManager.cs`
+
+**Codice del corso**:
+
+```csharp
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
+using Unity.Networking.Transport.Relay;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
+
+public async Task startClientAsync(string joinCode)
+{
+    try
+    {
+        allocation = await Relay.Instance.JoinAllocationAsync(joinCode);
+    }
+    catch (Exception e)
+    {
+        Debug.Log(e);
+        return;
+    }
+
+    UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+    RelayServerData relayServerData = new RelayServerData(allocation, "dtls");
+    transport.SetRelayServerData(relayServerData);
+
+    NetworkManager.Singleton.StartClient();
+}
+```
+
+**Codice di questo progetto**:
+
+```csharp
+using Unity.Services.Multiplayer;
+
+public async Task startClientAsync(string joinCode)
+{
+    try
+    {
+        session = await MultiplayerService.Instance.JoinSessionByCodeAsync(joinCode);
+    }
+    catch (Exception e)
+    {
+        Debug.LogError(e);
+    }
+}
+```
+
+Stessa identica logica del lato host: `JoinAllocationAsync` + configurare a mano il transport +
+`NetworkManager.Singleton.StartClient()` diventano un'unica chiamata a
+`JoinSessionByCodeAsync(joinCode)`, che fa tutto da sola.
+
+#### 2.6.6 Cosa NON è cambiato — riepilogo
+
+Per essere chiarissimi su cosa puoi continuare a seguire dal corso senza sorprese:
+
+- **`ApplicationController.cs`** (§2.1): identico, parola per parola.
+- **`ClientSingleton.cs` / `HostSingleton.cs`** (§2.2, §2.4): identici (tolti solo i vecchi
+  commenti `FLUSSO`, che erano solo etichette, senza effetto sul comportamento).
+- **`AuthenticationWrapper.cs`** (§2.3): identico, incluso il bugfix sul login già presente prima
+  di questa migrazione.
+- **`ClientGameManager.initAsync` / `.goToMenu`** (§2.2): identici.
+- **`MainMenu.cs`** (§2.5): stessa forma (stessi due metodi, stesso aggancio ai bottoni); cambia
+  solo cosa succede DENTRO `HostGameManager`/`ClientGameManager` quando li chiama.
+- **Tutto il gameplay** (§1, §4, §5): completamente estraneo a questa storia, non tocca mai
+  nessuna API di Unity Gaming Services.
+
+#### 2.6.7 Le nuove parole da imparare (Sessions)
+
+| Parola | Cos'è, in una frase |
+|---|---|
+| `MultiplayerService.Instance` | Il nuovo punto di ingresso per creare/entrare in una sessione. È l'equivalente di `Relay.Instance` nel corso, ma copre anche Lobby e Matchmaker. |
+| `SessionOptions` | La "scheda di configurazione" di una sessione da creare: quanti giocatori al massimo (`MaxPlayers`), e come si connetteranno (`.WithRelayNetwork()` per usare Relay, come in questo progetto). |
+| `CreateSessionAsync(options)` | Crea una sessione come host: alloca il Relay, genera il join code, avvia `NetworkManager` come Host. Tutto insieme. |
+| `JoinSessionByCodeAsync(joinCode)` | Entra in una sessione esistente come client, usando il join code. Avvia da sola `NetworkManager` come Client. |
+| `ISession` | Rappresenta la partita in corso, sia per l'host che per i client: espone `Code` (il join code), `Id`, `Host`, `IsHost`, `PlayerCount`, `MaxPlayers`, e il metodo `LeaveAsync()`. |
+| `session.LeaveAsync()` | Lascia la sessione: toglie il giocatore dal backend e chiude da sola i moduli di rete. Non serve chiamare `NetworkManager.Singleton.Shutdown()` a mano. |
+
+#### 2.6.8 Cosa manca ancora
+
+- Una UI che mostri `session.Code` a schermo (oggi è solo loggato in console).
+- Un modo per lasciare la sessione (`session.LeaveAsync()`, non ancora chiamato da nessuna parte).
+- Una gestione più fine degli errori: la documentazione Unity consiglia di intercettare
+  `SessionException` in modo specifico, per distinguere gli errori delle Sessions da altri errori
+  generici — oggi si cattura solo `Exception`, coerente con lo stile "minimale" del corso fin qui.
+- Se più avanti il corso introduce Lobby (liste partite) o Matchmaker, andranno anch'essi tradotti
+  nelle API delle Sessions, non nei vecchi pacchetti standalone (ormai deprecati).
 
 ---
+
 
 ## 3. Il vecchio sistema di test — `ConnectionButtons.cs`
 
@@ -1448,10 +1764,13 @@ wallet.spendCoins(costToFire);   // [FLUSSO 59]
 
 ---
 
-## 6. Tabella riepilogativa di tutti i FLUSSO
+## 6. Tabella riepilogativa di tutti i FLUSSO (solo gameplay)
 
-Uguale alla guida originale — utile per cercare velocemente un numero senza rileggere tutto.
-"∞" = catena locale a `ClientNetworkTransform.cs` (numerazione indipendente).
+Utile per cercare velocemente un numero senza rileggere tutto.
+"∞" = catena locale a `ClientNetworkTransform.cs` (numerazione indipendente). Il bootstrap/rete
+(`ApplicationController`, `ClientSingleton`/`HostSingleton`, `AuthenticationWrapper`,
+`ClientGameManager`/`HostGameManager`, `MainMenu`) NON è più numerato: è spiegato per file,
+con tutto il codice vero dentro, in §2 (e il confronto col corso è in §2.6).
 
 | # | File | In breve |
 |---|---|---|
@@ -1512,36 +1831,6 @@ Uguale alla guida originale — utile per cercare velocemente un numero senza ri
 | 57b | `ProjectileLauncher.cs` | Controllo monete lato client (cosmetico) |
 | 58 | `ProjectileLauncher.cs` | Controllo monete lato server (autorevole) |
 | 59 | `CoinWallet.cs` | `spendCoins`, scala `totalCoins` |
-| 60 | `ApplicationController.cs` | Campi `clientPrefab`/`hostPrefab` |
-| 61 | `ApplicationController.cs` | `Start`: `DontDestroyOnLoad` + rilevamento dedicated server |
-| 62 | `ApplicationController.cs` | `launchInMode`, ramo dedicated server (stub) |
-| 63 | `ApplicationController.cs` | `launchInMode`, ramo client: crea `ClientSingleton` |
-| 64 | `ApplicationController.cs` | Crea `HostSingleton`, sempre |
-| 65 | `ApplicationController.cs` | Se autenticato, `goToMenu()` |
-| 66 | `ClientSingleton.cs` | Pattern singleton `Instance` |
-| 67 | `ClientSingleton.cs` | `Start`: `DontDestroyOnLoad` |
-| 68 | `ClientSingleton.cs` | `createClient`: crea `ClientGameManager` |
-| 69 | `ClientGameManager.cs` | `initAsync`: init UGS + `doAuth` |
-| 70 | `ClientGameManager.cs` | `goToMenu`: carica scena "Menu" |
-| 71 | `AuthenticationWrapper.cs` | Campo statico `authState` |
-| 72 | `AuthenticationWrapper.cs` | `doAuth`, guardia "già autenticato" |
-| 73 | `AuthenticationWrapper.cs` | `doAuth`, guardia "già in corso" |
-| 74 | `AuthenticationWrapper.cs` | `doAuth`, delega a `SignInAnonimouslyAsync` (bug del `while` duplicato risolto) |
-| 75 | `AuthenticationWrapper.cs` | `authenticating()`, attesa passiva |
-| 76 | `AuthenticationWrapper.cs` | `SignInAnonimouslyAsync`, vera logica di login |
-| 77 | `AuthenticationWrapper.cs` | `enum AuthState` |
-| 78 | `HostSingleton.cs` | Pattern singleton `Instance` |
-| 79 | `HostSingleton.cs` | `Start`: `DontDestroyOnLoad` |
-| 80 | `HostSingleton.cs` | `createHost`: crea `HostGameManager` |
-| 81 | `HostGameManager.cs` | `StartHostAsync` avvia davvero la sessione (Relay) |
-| 82 | `HostSingleton.cs` | `GameManager` diventa proprietà pubblica, leggibile da `MainMenu` |
-| 83 | `MainMenu.cs` | `StartHost()`, agganciato al bottone "Host" del Menu |
-| 84 | `HostGameManager.cs` | Campi `allocation`/`joinCode`/`gameSceneName`/`maxConnections` |
-| 85 | `HostGameManager.cs` | `StartHostAsync`: `Relay.Instance.CreateAllocationAsync` |
-| 86 | `HostGameManager.cs` | `StartHostAsync`: `Relay.Instance.GetJoinCodeAsync` |
-| 87 | `HostGameManager.cs` | `StartHostAsync`: configura `UnityTransport` con `RelayServerData` |
-| 88 | `HostGameManager.cs` | `StartHostAsync`: `NetworkManager.Singleton.StartHost()` |
-| 89 | `HostGameManager.cs` | `StartHostAsync`: `NetworkManager.Singleton.SceneManager.LoadScene("Game")` |
 
 ---
 
@@ -1716,41 +2005,41 @@ private void OnTriggerEnter2D(Collider2D other)
 }
 ```
 
-### 7.10 Avvio sessione tramite Relay (niente IP diretto)
+### 7.10 Avvio sessione tramite Sessions/Relay (niente IP diretto)
 
-Vedi §2.5 per l'implementazione completa del lato Host.
+Vedi §2.5 e §2.6 per l'implementazione completa del lato Host/Client e per il confronto con
+l'API diretta di Relay (deprecata, vedi nota sotto).
 
 ```csharp
-public async Task StartHostAsync(int maxConnections)
+using Unity.Services.Multiplayer;
+
+public async Task<string> StartHostAsync(int maxConnections)
 {
-    Allocation allocation = await Relay.Instance.CreateAllocationAsync(maxConnections);
-    string joinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
-    // ... mostra joinCode all'utente, cosi' possa condividerlo ...
-
-    var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-    transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
-
-    NetworkManager.Singleton.StartHost();
+    var options = new SessionOptions { MaxPlayers = maxConnections }.WithRelayNetwork();
+    ISession session = await MultiplayerService.Instance.CreateSessionAsync(options);
+    // session.Code e' gia' il join code: mostralo all'utente, cosi' possa condividerlo.
+    // NetworkManager e' gia' avviato come Host: nessuna configurazione manuale del transport.
+    return session.Code;
 }
 
-public async Task<bool> StartClientAsync(string joinCode)
+public async Task JoinAsClientAsync(string joinCode)
 {
-    JoinAllocation allocation = await Relay.Instance.JoinAllocationAsync(joinCode);
-
-    var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-    transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
-
-    return NetworkManager.Singleton.StartClient();
+    ISession session = await MultiplayerService.Instance.JoinSessionByCodeAsync(joinCode);
+    // NetworkManager e' gia' avviato come Client: nessuna configurazione manuale del transport.
 }
 ```
 
-Il ramo `StartClientAsync` (con `JoinAllocationAsync` al posto di `CreateAllocationAsync`) è
-simmetrico ma **non ancora scritto** in questo progetto: è il prossimo passo naturale per
-completare il flusso "Join" nel Menu.
+> ⚠️ **Nota storica**: fino a gennaio 2026 questo si scriveva chiamando
+> `Relay.Instance.CreateAllocationAsync`/`GetJoinCodeAsync`/`JoinAllocationAsync` e configurando a
+> mano `UnityTransport.SetRelayServerData` prima di `NetworkManager.Singleton.StartHost()`/
+> `StartClient()` — è quello che mostra ancora il corso. Da settembre 2026
+> `com.unity.services.relay` standalone è deprecato: si usa `com.unity.services.multiplayer` e le
+> Sessions come sopra. Il confronto completo, riga per riga, è in §2.6.
 
-> **Esempio stupido**: `CreateAllocationAsync` è come prenotare un tavolo al ristorante (crei tu
-> la prenotazione). `JoinAllocationAsync` è come presentarti al ristorante dicendo "ho una
-> prenotazione a nome Rossi" (ti unisci a una prenotazione già fatta da qualcun altro).
+> **Esempio stupido**: `CreateSessionAsync` è come dire "un tavolo per N, grazie" al maître, che
+> si occupa lui di centralino e cameriere. `JoinSessionByCodeAsync` è come presentarti dicendo "ho
+> una prenotazione a nome Rossi" (ti unisci a una prenotazione già fatta da qualcun altro) —
+> stesso concetto del vecchio `JoinAllocationAsync`, ma con una sola chiamata invece di tre.
 
 ---
 
@@ -1815,7 +2104,8 @@ se ne accorge e non fa pagare due volte (controllo idempotente).
 - **NetworkBehaviour**: uno script "consapevole della rete". *Vedi §1.*
 - **NetworkVariable\<T\>**: variabile auto-sincronizzata. *Vedi §1.*
 - **Relay**: servizio di Unity che fa da "postino neutrale" tra host e client, senza bisogno di IP
-  pubblici o port forwarding. *Vedi §2.5.*
+  pubblici o port forwarding. Nel corso lo chiami direttamente (`com.unity.services.relay`, oggi
+  deprecato); in questo progetto è usato indirettamente tramite le Sessions. *Vedi §2.6.*
 - **Dedicated server**: un computer che ospita la partita ma su cui nessuno gioca davvero (niente
   scheda grafica, niente giocatore). *Esempio stupido: il server di posta elettronica — smista le
   email, ma nessuno "vive" dentro di lui.*
@@ -1824,10 +2114,24 @@ se ne accorge e non fa pagare due volte (controllo idempotente).
 - **ScriptableObject**: un file/asset di Unity che contiene dati o logica condivisa, non
   agganciato a un singolo oggetto di scena. *Esempio stupido: un ricettario in cucina — non è
   "attaccato" a nessuna pentola in particolare, ma tutte le pentole possono usarlo.*
+- **Multiplayer Services SDK (MPS SDK)**: il pacchetto unificato `com.unity.services.multiplayer`,
+  che da settembre 2026 sostituisce i vecchi pacchetti separati Lobby/Relay/Matchmaker/Multiplay.
+  *Esempio stupido: prima avevi il numero del centralino, del cameriere e del maître separati; ora
+  chiami un solo numero e pensano loro a smistare la chiamata. Vedi §2.6.*
+- **Session / `ISession`**: rappresenta la partita in corso (o in creazione): tiene insieme
+  allocazione Relay, join code, e l'avvio di `NetworkManager`. *Esempio stupido: è la prenotazione
+  al ristorante, non il piatto: sa chi c'è, quanti posti restano, e il tavolo assegnato. Vedi
+  §2.6.7.*
+- **`SessionOptions`**: la configurazione passata quando crei una sessione (quanti giocatori al
+  massimo, e se usare Relay o un'altra modalità di rete). *Vedi §2.6.7.*
 
 ---
 
-*Documento generato a partire da `GUIDA_MULTIPLAYER.md` e dai commenti `[FLUSSO N]` presenti nel
-codice sorgente, con l'aggiunta del codice vero, spiegazioni più semplici ed esempi extra. Se
-aggiungi nuove funzionalità al progetto, continua la numerazione `FLUSSO` da 90 in poi e
-aggiorna sia `GUIDA_MULTIPLAYER.md` sia questo documento.*
+*Documento aggiornato a settembre 2026. Le sezioni di gameplay (§1, §4, §5, §6) restano generate a
+partire dai commenti `[FLUSSO N]` presenti nel codice sorgente: se aggiungi nuove funzionalità di
+gameplay, continua la numerazione `FLUSSO` da 90 in poi e aggiorna la tabella in §6, in entrambi i
+documenti. Il capitolo di bootstrap/rete (§2) non usa più questa numerazione: è stato riscritto
+per raccontare la migrazione a Unity Multiplayer Services SDK (Sessions), resa necessaria dalla
+deprecazione dei pacchetti standalone Lobby/Relay/Matchmaker/Multiplay avvenuta dopo la
+registrazione del corso — vedi §2.6 per tutti i dettagli, con codice del corso e codice attuale
+messi a confronto riga per riga.*
