@@ -1,5 +1,7 @@
 using System;
+using System.Text;
 using System.Threading.Tasks;
+using Unity.Netcode;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
@@ -43,6 +45,8 @@ public class ClientGameManager
         // richiedeva Relay.JoinAllocationAsync + UnityTransport.SetRelayServerData +
         // NetworkManager.StartClient: entra nella sessione creata dall'host e avvia
         // gia' questa istanza come Client connesso via Relay.
+        setConnectionData();
+
         try
         {
             session = await MultiplayerService.Instance.JoinSessionByCodeAsync(joinCode);
@@ -62,6 +66,8 @@ public class ClientGameManager
     // sessionId e' ISessionInfo.Id, cioe' l'id della Lobby sottostante.
     public async Task startClientByIdAsync(string sessionId)
     {
+        setConnectionData();
+
         try
         {
             session = await MultiplayerService.Instance.JoinSessionByIdAsync(sessionId);
@@ -70,5 +76,20 @@ public class ClientGameManager
         {
             Debug.LogError(e);
         }
+    }
+
+    // Va chiamato PRIMA di JoinSessionBy*Async: quelle chiamate avviano gia' il
+    // NetworkManager come Client e inviano subito la richiesta di connessione,
+    // quindi ConnectionData impostato dopo arriverebbe vuoto all'ApprovalCheck.
+    private void setConnectionData()
+    {
+        UserData userData = new UserData
+        {
+            username = PlayerPrefs.GetString(NameSelector.playerNameKey, "Missing name")
+        };
+        string payload = JsonUtility.ToJson(userData);
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+        NetworkManager.Singleton.NetworkConfig.ConnectionData = payloadBytes;
     }
 }

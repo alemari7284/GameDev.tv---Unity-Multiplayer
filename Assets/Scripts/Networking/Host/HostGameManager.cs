@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Services.Multiplayer;
@@ -25,8 +26,26 @@ public class HostGameManager
     private const string gameSceneName = "Game";
     private const int maxConnections = 20;
 
+    private NetworkServer networkServer;
+
     public async Task StartHostAsync()
     {
+        string playerName = PlayerPrefs.GetString(NameSelector.playerNameKey, "Unknown");
+
+        // NetworkServer e ConnectionData vanno preparati PRIMA di CreateSessionAsync:
+        // la chiamata avvia gia' l'Host, e l'Host passa subito dall'ApprovalCheck
+        // con il proprio payload.
+        networkServer = new NetworkServer(NetworkManager.Singleton);
+
+        UserData userData = new UserData
+        {
+            username = PlayerPrefs.GetString(NameSelector.playerNameKey, "Missing name")
+        };
+        string payload = JsonUtility.ToJson(userData);
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+        NetworkManager.Singleton.NetworkConfig.ConnectionData = payloadBytes;
+
         // CreateSessionAsync con WithRelayNetwork() fa, in una sola chiamata, quello
         // che prima richiedeva Relay.CreateAllocationAsync + GetJoinCodeAsync +
         // UnityTransport.SetRelayServerData + NetworkManager.StartHost: alloca il
@@ -46,7 +65,7 @@ public class HostGameManager
             var options = new SessionOptions
             {
                 // Name: il nome mostrato nella lista lobby (QuerySessionsAsync lato client).
-                Name = "My Lobby",
+                Name = $"{playerName}'s Lobby",
                 // MaxPlayers: capienza della Lobby, host compreso. Il Relay viene
                 // dimensionato di conseguenza (nel corso era il parametro di
                 // CreateAllocationAsync e di CreateLobbyAsync, qui e' uno solo).

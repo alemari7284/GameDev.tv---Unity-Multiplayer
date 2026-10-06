@@ -12,7 +12,7 @@ public class NameSelector : MonoBehaviour
     [SerializeField] private int minNameLength = 1;
     [SerializeField] private int maxNameLength = 12;
 
-    private const string playerNameKey = "PlayerName";
+    public const string playerNameKey = "PlayerName";
     private void Start()
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
@@ -33,7 +33,7 @@ public class NameSelector : MonoBehaviour
 
     public void connect()
     {
-        PlayerPrefs.SetString("playerName", nameField.text);
+        PlayerPrefs.SetString(playerNameKey, nameField.text);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex + 1);
     }
 }
