@@ -59,6 +59,7 @@ Questo è il **vero** primo codice eseguito all'avvio del gioco, prima ancora de
 - `Assets/Scripts/Networking/Client/AuthenticationWrapper.cs` — wrapper attorno a Unity Authentication Service.
 - `Assets/Scripts/Networking/Host/HostSingleton.cs` + `HostGameManager.cs` — bootstrap lato host, avvio come host di una sessione.
 - `Assets/Scripts/UI/MainMenu.cs` — bottoni "Host"/"Join" nella scena `Menu`.
+- `Assets/Scripts/UI/LobbiesList.cs` + `LobbyItem.cs` — lista delle lobby pubbliche nella scena `Menu` (§2.6.7).
 
 > ⚠️ **Nota su questa sezione**: questa parte del progetto è stata riscritta a settembre 2026 per inseguire una migrazione dell'ecosistema Unity Gaming Services avvenuta *dopo* la registrazione del corso (gennaio 2026): i pacchetti che il corso usa direttamente (`com.unity.services.relay`, `.lobby`, `.matchmaker`, `.multiplay`) sono stati deprecati e sostituiti da un unico pacchetto unificato, `com.unity.services.multiplayer`. Tutto il §2.6 qui sotto spiega nel dettaglio **cosa dice il corso**, **cosa dice invece questo progetto**, e **perché**.
 
@@ -709,20 +710,68 @@ var options = new SessionOptions
 
 > **Esempio stupido — `IsPrivate`**: una lobby pubblica è come una partita personalizzata di Rocket League che compare nella lista del server browser: chiunque la vede e ci entra. Una lobby privata (`IsPrivate = true`) è come la frequenza Codec di Meryl in MGS1 (140.15): non compare da nessuna parte, la conosce solo chi l'ha letta sul retro della custodia del CD, cioè chi ha ricevuto `session.Code`.
 
-**Lato client (prossime lezioni)**: la lista lobby del corso (`QueryLobbiesAsync`, `LobbyItem`, `JoinLobbyByIdAsync` seguito dalla lettura di `Data["JoinCode"]` e da `StartClient`) si traduce così:
+**Lato client: la lista lobby** — file `Assets/Scripts/UI/LobbiesList.cs` (il pannello con la lista e il bottone "Refresh"), `Assets/Scripts/UI/LobbyItem.cs` (una riga della lista, con il bottone "Join") e il nuovo metodo `ClientGameManager.startClientByIdAsync`.
+
+**Prima** (come da corso):
 ```csharp
-// Lista lobby: ogni ISessionInfo ha Id, Name, AvailableSlots, MaxPlayers...
-QuerySessionsResults results = await MultiplayerService.Instance.QuerySessionsAsync(
-    new QuerySessionsOptions { Count = 25 });
-
-foreach (ISessionInfo info in results.Sessions)
+// LobbiesList.refreshList
+QueryLobbiesOptions options = new QueryLobbiesOptions();
+options.Count = 25;
+options.Filters = new List<QueryFilter>()
 {
-    // un LobbyItem per ogni info (nel corso riceveva un Lobby)
-}
+    new QueryFilter(field: QueryFilter.FieldOptions.AvailableSlots, op: QueryFilter.OpOptions.GT, value: "0"),
+    new QueryFilter(field: QueryFilter.FieldOptions.IsLocked, op: QueryFilter.OpOptions.EQ, value: "0"),
+};
+QueryResponse lobbies = await Lobbies.Instance.QueryLobbiesAsync(options);
+foreach (Lobby lobby in lobbies.Results) { /* Instantiate LobbyItem, init(this, lobby) */ }
 
-// Entrare in una lobby scelta dalla lista: fa anche il join Relay e avvia il Client
-session = await MultiplayerService.Instance.JoinSessionByIdAsync(info.Id);
+// LobbiesList.JoinAsync
+Lobby joiningLobby = await Lobbies.Instance.JoinLobbyByIdAsync(lobby.Id);
+string joinCode = joiningLobby.Data["JoinCode"].Value;
+await ClientSingleton.Instance.gameManager.startClientAsync(joinCode);
+
+// LobbyItem.init
+lobbyPlayersText.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
 ```
+
+**Dopo** (in questo progetto):
+```csharp
+// LobbiesList.refreshList
+var options = new QuerySessionsOptions
+{
+    Count = 25,
+    FilterOptions = new List<FilterOption>
+    {
+        new FilterOption(FilterField.AvailableSlots, "0", FilterOperation.Greater),
+        new FilterOption(FilterField.IsLocked, "0", FilterOperation.Equal),
+    }
+};
+QuerySessionsResults results = await MultiplayerService.Instance.QuerySessionsAsync(options);
+foreach (ISessionInfo sessionInfo in results.Sessions) { /* Instantiate LobbyItem, init(this, sessionInfo) */ }
+
+// LobbiesList.JoinAsync
+await ClientSingleton.Instance.gameManager.startClientByIdAsync(sessionInfo.Id);
+
+// ClientGameManager.startClientByIdAsync
+session = await MultiplayerService.Instance.JoinSessionByIdAsync(sessionId);
+
+// LobbyItem.init
+int playerCount = sessionInfo.MaxPlayers - sessionInfo.AvailableSlots;
+lobbyPlayersText.text = $"{playerCount}/{sessionInfo.MaxPlayers}";
+```
+
+| Pezzo del corso | Cosa diventa con le Sessions | Note |
+|---|---|---|
+| `QueryLobbiesOptions` + `QueryFilter(field, op, value)` | `QuerySessionsOptions` + `FilterOption(field, value, operation)` | Stessi filtri, solo l'ordine dei parametri cambia |
+| `Lobbies.Instance.QueryLobbiesAsync` → `QueryResponse.Results` | `MultiplayerService.Instance.QuerySessionsAsync` → `QuerySessionsResults.Sessions` | |
+| `Lobby` (in `LobbyItem` e `JoinAsync`) | `ISessionInfo` | Riassunto in sola lettura della sessione: `Id`, `Name`, `MaxPlayers`, `AvailableSlots`… Dietro le quinte è proprio un wrapper attorno alla `Lobby` |
+| `lobby.Players.Count` | `MaxPlayers - AvailableSlots` | `ISessionInfo` non espone la lista dei giocatori |
+| `JoinLobbyByIdAsync` + `Data["JoinCode"]` + `startClientAsync(joinCode)` | `startClientByIdAsync(sessionInfo.Id)` → `JoinSessionByIdAsync` | Il join code del Relay lo legge e lo usa l'SDK da solo |
+| `catch (LobbyServiceException e) { }` vuoto | `catch (Exception e) { Debug.LogError(e); }` | Un catch vuoto nasconde gli errori: almeno li vediamo in console |
+
+Due bug del codice copiato, corretti durante l'adattamento:
+- **`Onable` invece di `OnEnable`**: Unity chiama i metodi "magici" solo se il nome è esatto. Con il refuso la lista non si caricava mai da sola all'apertura del pannello: andava premuto "Refresh" a mano.
+- **`isJoining` bloccato a `true`**: nel corso, in caso di errore il `return` dentro il `catch` saltava `isJoining = false`, e da quel momento ogni click su "Join" veniva ignorato. Ora gli errori li gestisce `startClientByIdAsync` e `isJoining = false` viene raggiunto sempre.
 
 > **Esempio stupido — la lista lobby**: è la schermata di selezione livello di Crash Bandicoot, ma per le partite: vedi tutti i "portali" aperti, con quanti posti liberi ha ciascuno (`AvailableSlots`), e saltandoci dentro (`JoinSessionByIdAsync`) ti ritrovi direttamente nel livello, senza dover digitare nessun codice.
 
@@ -731,7 +780,6 @@ session = await MultiplayerService.Instance.JoinSessionByIdAsync(info.Id);
 #### 2.6.8 Cosa manca ancora rispetto a un flusso completo
 
 - Mostrare `session.Code` in una UI (oggi è solo loggato in console).
-- La **lista lobby lato client** (`QuerySessionsAsync` + `JoinSessionByIdAsync`, vedi §2.6.7): il lato host è pronto (la sessione è già pubblica e ha un nome), manca la UI che la mostra e il metodo di join in `ClientGameManager`.
 - Un nome di lobby vero: oggi è fisso a `"My Lobby"` per tutte le partite.
 - Un bottone/flusso per lasciare la sessione (`session.LeaveAsync()`, non ancora richiamato da nessuna parte). Per l'host, chiudere la sessione chiude anche la Lobby: non c'è un `DeleteLobbyAsync` separato da chiamare.
 - Gestione più ricca degli errori: la documentazione Unity consiglia di intercettare in modo specifico `SessionException` (sottoclasse di `Exception`) per distinguere gli errori delle Sessions da altri errori generici — oggi il codice cattura solo `Exception` generico, coerente con lo stile "minimale" tenuto finora dal corso.

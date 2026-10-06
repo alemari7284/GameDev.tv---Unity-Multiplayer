@@ -52,4 +52,23 @@ public class ClientGameManager
             Debug.LogError(e);
         }
     }
+
+    // Gemello di startClientAsync, ma per entrare in una lobby scelta dalla lista
+    // (LobbiesList) invece che digitando il codice. Nel corso qui c'erano tre passi:
+    // Lobbies.JoinLobbyByIdAsync, lettura di lobby.Data["JoinCode"] e poi
+    // startClientAsync(joinCode). JoinSessionByIdAsync fa tutto in una chiamata:
+    // entra nella Lobby, recupera da sola il join code del Relay (salvato
+    // dall'host in CreateSessionAsync) e avvia questa istanza come Client.
+    // sessionId e' ISessionInfo.Id, cioe' l'id della Lobby sottostante.
+    public async Task startClientByIdAsync(string sessionId)
+    {
+        try
+        {
+            session = await MultiplayerService.Instance.JoinSessionByIdAsync(sessionId);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+        }
+    }
 }
