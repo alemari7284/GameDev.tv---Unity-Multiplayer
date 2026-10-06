@@ -8,7 +8,7 @@ public class Lifetime : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        // [FLUSSO 23] Rete di sicurezza per i proiettili (reali e dummy): se non
+        // Rete di sicurezza per i proiettili (reali e dummy): se non
         // colpiscono nulla entro "lifetime" secondi, si autodistruggono comunque,
         // evitando che restino in scena all'infinito sprecando memoria.
         Destroy(gameObject, lifetime);

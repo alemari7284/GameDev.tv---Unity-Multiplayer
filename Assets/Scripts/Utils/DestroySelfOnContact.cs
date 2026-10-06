@@ -7,7 +7,7 @@ public class DestroySelfOnContact : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        // [FLUSSO 22] Il proiettile "vero" generato dal server (FLUSSO 18) si
+        // Il proiettile "vero" generato dal server (ProjectileLauncher.PrimaryFireServerRpc) si
         // autodistrugge al primo contatto (es. con un tank o un ostacolo): essendo il
         // server ad averlo istanziato, questa distruzione e' autorevole e si propaga
         // a tutti i client.

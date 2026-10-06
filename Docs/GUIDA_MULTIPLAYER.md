@@ -7,23 +7,22 @@
 
 ## 0. Come leggere questo documento
 
-Nel codice di **gameplay** (§5) ogni commento importante è ancora taggato `// [FLUSSO N]`. Sono numeri progressivi che raccontano **l'ordine cronologico** in cui il codice viene eseguito durante una partita, non l'ordine dei file. Seguendo i numeri in salita si legge la partita come una storia: input → mira → sparo → danno → vita → monete.
+Il codice di **gameplay** (§4, §5) è raccontato in **ordine cronologico**, cioè nell'ordine in cui viene eseguito durante una partita, non nell'ordine dei file: input → mira → sparo → danno → vita → monete. Ogni tabella indica il metodo o il campo in cui succede ogni passo, così puoi aprire il file e trovarlo subito.
 
-Il codice di **bootstrap/rete** (§2 — avvio dell'app, autenticazione, avvio della sessione Host/Client) invece **non usa più** questa numerazione: quei file sono stati riscritti a settembre 2026 per una migrazione dell'ecosistema Unity Gaming Services avvenuta dopo la registrazione del corso (§2.6 spiega tutto nel dettaglio), e mantenere dei numeri `FLUSSO` legati a un codice che nel frattempo è cambiato avrebbe solo confuso le idee. Quella sezione è quindi organizzata per file/argomento, con il codice vero incollato dentro.
+Il codice di **bootstrap/rete** (§2 — avvio dell'app, autenticazione, avvio della sessione Host/Client) è invece organizzato per file/argomento, con il codice vero incollato dentro: quei file sono stati riscritti a settembre 2026 per una migrazione dell'ecosistema Unity Gaming Services avvenuta dopo la registrazione del corso (§2.6 spiega tutto nel dettaglio).
 
-Esiste ancora un'eccezione dentro il gameplay: `ClientNetworkTransform.cs` ha una propria numerazione interna (`FLUSSO 0`→`8`) che descrive un meccanismo a sé stante (la sincronizzazione del transform), richiamato dagli altri script come blocco unico ("vedi FLUSSO 0-8 in quel file"). Per questo lo trattiamo come **fondamenta**, prima del flusso principale di gioco (§4).
+`ClientNetworkTransform.cs` descrive un meccanismo a sé stante (la sincronizzazione del transform) su cui si appoggia il resto del gameplay: per questo lo trattiamo come **fondamenta**, prima del flusso principale di gioco (§4).
 
 Questo documento è organizzato così:
 
 1. Concetti Netcode da sapere prima di leggere il codice (§1)
-2. Bootstrap dell'app, autenticazione e avvio della sessione di rete — organizzato per file, **senza numerazione FLUSSO** (§2 — il vero punto di partenza, prima ancora del flusso di gioco; include §2.6, la spiegazione dettagliata di come e perché questa parte diverge dal corso)
+2. Bootstrap dell'app, autenticazione e avvio della sessione di rete — organizzato per file (§2 — il vero punto di partenza, prima ancora del flusso di gioco; include §2.6, la spiegazione dettagliata di come e perché questa parte diverge dal corso)
 3. Il vecchio sistema di test locale con IP diretto (§3)
 4. Le fondamenta: come si muove un oggetto in rete (§4 — `ClientNetworkTransform`)
-5. Il flusso di gioco vero e proprio, in ordine `FLUSSO 0 → 59` (§5)
-6. Tabella riepilogativa di tutti i FLUSSO di gameplay (§6)
-7. Catalogo di pattern riusabili, con mini-esempi "stupidi" scollegati dal progetto, pronti per essere copiati in un gioco nuovo (§7)
-8. Checklist mentale da seguire ogni volta che scrivi un componente di rete nuovo (§8)
-9. Glossario (§9)
+5. Il flusso di gioco vero e proprio, in ordine cronologico (§5)
+6. Catalogo di pattern riusabili, con mini-esempi "stupidi" scollegati dal progetto, pronti per essere copiati in un gioco nuovo (§6)
+7. Checklist mentale da seguire ogni volta che scrivi un componente di rete nuovo (§7)
+8. Glossario (§8)
 
 > 🎮 **Sugli "esempi stupidi"**: in tutto il documento i concetti sono spiegati con paragoni presi da tre giochi — **Metal Gear Solid** (Snake, il Codec, Shadow Moses), **Crash Bandicoot** (casse, frutti Wumpa, Crash Team Racing) e **Rocket League** (macchine, palla, boost, partite private). Non sono precisi al 100% su come quei giochi funzionano davvero dietro le quinte: servono solo a fissare l'idea.
 
@@ -61,7 +60,7 @@ Questo è il **vero** primo codice eseguito all'avvio del gioco, prima ancora de
 - `Assets/Scripts/Networking/Host/HostSingleton.cs` + `HostGameManager.cs` — bootstrap lato host, avvio come host di una sessione.
 - `Assets/Scripts/UI/MainMenu.cs` — bottoni "Host"/"Join" nella scena `Menu`.
 
-> ⚠️ **Nota su questa sezione**: a differenza del resto del documento (§5), qui **non** troverai più tag `// [FLUSSO N]` nel codice né nella tabella. Questa parte del progetto è stata riscritta a settembre 2026 per inseguire una migrazione dell'ecosistema Unity Gaming Services avvenuta *dopo* la registrazione del corso (gennaio 2026): i pacchetti che il corso usa direttamente (`com.unity.services.relay`, `.lobby`, `.matchmaker`, `.multiplay`) sono stati deprecati e sostituiti da un unico pacchetto unificato, `com.unity.services.multiplayer`. Numerare questi file con `FLUSSO N` avrebbe legato per sempre la doc a una versione di codice che qui non esiste più. Tutto il §2.6 qui sotto spiega nel dettaglio **cosa dice il corso**, **cosa dice invece questo progetto**, e **perché**.
+> ⚠️ **Nota su questa sezione**: questa parte del progetto è stata riscritta a settembre 2026 per inseguire una migrazione dell'ecosistema Unity Gaming Services avvenuta *dopo* la registrazione del corso (gennaio 2026): i pacchetti che il corso usa direttamente (`com.unity.services.relay`, `.lobby`, `.matchmaker`, `.multiplay`) sono stati deprecati e sostituiti da un unico pacchetto unificato, `com.unity.services.multiplayer`. Tutto il §2.6 qui sotto spiega nel dettaglio **cosa dice il corso**, **cosa dice invece questo progetto**, e **perché**.
 
 ### 2.1 `ApplicationController.cs` — punto di ingresso
 
@@ -324,7 +323,7 @@ public class HostSingleton : MonoBehaviour
 
 Pattern singleton "lazy", identico a `ClientSingleton` (§2.2). `createHost` si limita a istanziare `HostGameManager`: a differenza di `createClient` non c'è qui nessuna logica asincrona da avviare — quella è tutta dentro `StartHostAsync` (§2.5), chiamata più tardi, quando l'utente preme davvero "Host". `GameManager` è una proprietà pubblica (non un campo privato) proprio per essere leggibile dall'esterno, da `MainMenu.StartHost` (§2.5).
 
-**Non toccato dalla migrazione** (a parte la rimozione dei vecchi commenti `FLUSSO`): questo file non chiama nessuna API di rete direttamente, quindi non c'era nulla da migrare.
+**Non toccato dalla migrazione**: questo file non chiama nessuna API di rete direttamente, quindi non c'era nulla da migrare.
 
 ### 2.5 `MainMenu.cs` + `HostGameManager.StartHostAsync` / `ClientGameManager.startClientAsync` — avvio reale della sessione
 
@@ -622,7 +621,7 @@ Stesso identico principio del lato host: `Relay.Instance.JoinAllocationAsync` + 
 Per chiarezza, un elenco esplicito di ciò che la migrazione **non** ha toccato, così da poter continuare a seguire il corso senza sorprese su queste parti:
 
 - **`ApplicationController.cs`** (§2.1): identico al corso.
-- **`ClientSingleton.cs` / `HostSingleton.cs`** (§2.2, §2.4): identici al corso (solo puliti dai vecchi riferimenti `FLUSSO`, che non avevano comunque effetto sul comportamento).
+- **`ClientSingleton.cs` / `HostSingleton.cs`** (§2.2, §2.4): identici al corso.
 - **`AuthenticationWrapper.cs`** (§2.3): identico al corso, incluso il bugfix sul `while` di `SignInAnonimouslyAsync` già presente prima di questa migrazione.
 - **`ClientGameManager.initAsync` / `.goToMenu`** (§2.2): identici al corso.
 - **`MainMenu.cs`** (§2.5): identico al corso nella forma (stessi due metodi, stesso aggancio ai bottoni); cambia solo cosa succede *dentro* `HostGameManager`/`ClientGameManager` quando li chiama.
@@ -789,19 +788,18 @@ Il `NetworkTransform` di Netcode, di default, è **server-authoritative**: solo 
 
 > **Esempio stupido**: immagina Rocket League server-authoritative puro: tocchi lo stick, aspetti che il server ti risponda "ok, ora sei qui", e solo allora la macchina si muove. Sembra di guidare sul burro (lento ma sicuro). Con `ClientNetworkTransform` la TUA macchina si muove subito sul tuo schermo e il server si limita a inoltrare la posizione agli altri (veloce, ma un cheater potrebbe dire "sono in porta avversaria" e teletrasportarsi lì).
 
-### Il meccanismo, passo per passo (FLUSSO 0→8, numerazione locale al file)
+### Il meccanismo, passo per passo
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **0** | `OnIsServerAuthoritative()` ritorna `false`: è la riga che dichiara "questo NON è più un NetworkTransform server-authoritative". |
-| **1** | `OnNetworkSpawn()` chiama prima `base.OnNetworkSpawn()`, per non rompere il setup standard di Netcode. |
-| **2** | Poi imposta `CanCommitToTransform = IsOwner`: solo il proprietario avrà il diritto di "spedire" il proprio transform. |
-| **3** | In `Update()`, `CanCommitToTransform` viene ricalcolato **ogni frame** (non solo allo spawn), per restare corretto anche se la proprietà dell'oggetto cambiasse a runtime. |
-| **4** | `base.Update()` fa il lavoro vero: se sei owner, "committa" (applica) lo stato locale; se non lo sei, **interpola** verso i valori ricevuti dalla rete (è quello che rende il movimento degli altri fluido e non a scatti). |
-| **5** | Guard `NetworkManager != null`: prima dello spawn o fuori sessione potrebbe essere nullo. |
-| **6** | Si invia il transform solo se si è davvero connessi (`IsConnectedClient`) o si è il server/host (`IsListening`). |
-| **7** | Ultimo filtro: solo chi ha `CanCommitToTransform` (il proprietario, FLUSSO 3) prosegue. Le copie remote si fermano qui e restano in sola interpolazione. |
-| **8** | `TryCommitTransformToServer(transform, NetworkManager.LocalTime.Time)`: il proprietario manda il SUO transform al server, insieme a un timestamp che serve agli altri client per interpolare correttamente nel tempo. |
+| `OnIsServerAuthoritative()` | Ritorna `false`: è la riga che dichiara "questo NON è più un NetworkTransform server-authoritative". |
+| `OnNetworkSpawn()` | Chiama prima `base.OnNetworkSpawn()`, per non rompere il setup standard di Netcode, poi imposta `CanCommitToTransform = IsOwner`: solo il proprietario avrà il diritto di "spedire" il proprio transform. |
+| `Update()`, inizio | `CanCommitToTransform` viene ricalcolato **ogni frame** (non solo allo spawn), per restare corretto anche se la proprietà dell'oggetto cambiasse a runtime. |
+| `base.Update()` | Fa il lavoro vero: se sei owner, "committa" (applica) lo stato locale; se non lo sei, **interpola** verso i valori ricevuti dalla rete (è quello che rende il movimento degli altri fluido e non a scatti). |
+| Guard `NetworkManager != null` | Prima dello spawn o fuori sessione potrebbe essere nullo. |
+| Guard `IsConnectedClient` / `IsListening` | Si invia il transform solo se si è davvero connessi o si è il server/host. |
+| Guard `CanCommitToTransform` | Ultimo filtro: solo il proprietario prosegue. Le copie remote si fermano qui e restano in sola interpolazione. |
+| `TryCommitTransformToServer(transform, NetworkManager.LocalTime.Time)` | Il proprietario manda il SUO transform al server, insieme a un timestamp che serve agli altri client per interpolare correttamente nel tempo. |
 
 ```
 Owner del tank                Server                     Altri client
@@ -810,53 +808,52 @@ Owner del tank                Server                     Altri client
      |------ transform+time --->|                             |
      |                          |------ sincronizza --------->|
      |                          |                              |  interpola
-     |                          |                              |  (FLUSSO 4, ramo "else")
+     |                          |                              |  (base.Update, ramo non-owner)
 ```
 
 Questo stesso componente viene poi usato anche per **TurretPivot** (rotazione Z) e **Treads** (cingoli): stessa logica, assi diversi da sincronizzare.
 
 ---
 
-## 5. Il flusso di gioco, in ordine (`FLUSSO 0 → 59`)
+## 5. Il flusso di gioco, in ordine
 
-Da qui in poi seguiamo la numerazione **globale** del gameplay: dal momento in cui premi un tasto, fino a quando una moneta ricompare in un altro punto della mappa.
+Da qui in poi seguiamo una partita in ordine cronologico: dal momento in cui premi un tasto, fino a quando una moneta ricompare in un altro punto della mappa. Le tabelle indicano, per ogni passo, il metodo o il campo in cui succede, così puoi aprire il file e trovarlo subito.
 
-### 5.1 Input del giocatore — `InputReader.cs` (FLUSSO 0 → 7c)
+### 5.1 Input del giocatore — `InputReader.cs`
 
 File: `Assets/Scripts/Input/InputReader.cs` — è uno **ScriptableObject**, non un componente su un GameObject: è un asset condiviso che chiunque può referenziare (movimento, mira, sparo) senza dover ognuno gestire da sé l'Input System.
 
 > **Esempio stupido**: `InputReader` è il Codec di Metal Gear Solid. Trasmette su una frequenza (`MoveEvent`, `PrimaryFireEvent`), e chiunque sia sintonizzato (PlayerMovement, ProjectileLauncher) riceve il messaggio, senza che il Codec sappia o si preoccupi di chi sta ascoltando. Se domani Snake cambia Codec (gamepad invece di tastiera), Otacon e Campbell non se ne accorgono nemmeno.
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **0** | `using static Controls;` — `Controls` è la classe generata automaticamente dall'asset `.inputactions`, non scritta a mano. |
-| **1** | La classe implementa `IPlayerActions`: un "contratto" che obbliga a fornire `OnMove`, `OnPrimaryFire`, `OnAim`. Sarà l'Input System a chiamarli. |
-| **2** | Il campo `controls` è l'istanza runtime di quella classe generata. |
-| **3** | `PrimaryFireEvent` e `MoveEvent` sono il "megafono" verso il resto del gioco: l'input grezzo viene ri-emesso come evento C#, così chi ascolta non deve sapere nulla dell'Input System sottostante. |
-| **3b** | `AimPosition` invece **non** è un evento ma una proprietà "sempre leggibile" (polling): la posizione del mouse cambia in continuazione e a chi mira serve sempre l'ultimo valore, non una notifica per ogni pixel. |
-| **4-6** | `OnEnable()`: crea `Controls` se non esiste, registra questo oggetto come gestore delle callback (`SetCallbacks(this)`) e abilita la lettura (`controls.Enable()`). Senza quest'ultima riga, nessuna callback scatterebbe. |
-| **7a** | `OnMove` — ad ogni cambio dell'azione "Move", rilancia il `Vector2` letto tramite `MoveEvent`. |
-| **7b** | `OnPrimaryFire` — distingue `performed` (tasto premuto → evento `true`) da `canceled` (tasto rilasciato → evento `false`). |
-| **7c** | `OnAim` — a differenza degli altri due, **non** solleva un evento: salva solo l'ultima posizione del mouse, che `PlayerAiming` leggerà da sé ogni frame. |
+| `using static Controls;` | `Controls` è la classe generata automaticamente dall'asset `.inputactions`, non scritta a mano. |
+| `: IPlayerActions` | Un "contratto" che obbliga a fornire `OnMove`, `OnPrimaryFire`, `OnAim`. Sarà l'Input System a chiamarli. |
+| Campo `controls` | L'istanza runtime di quella classe generata. |
+| Eventi `PrimaryFireEvent` / `MoveEvent` | Il "megafono" verso il resto del gioco: l'input grezzo viene ri-emesso come evento C#, così chi ascolta non deve sapere nulla dell'Input System sottostante. |
+| Proprietà `AimPosition` | **Non** è un evento ma una proprietà "sempre leggibile" (polling): la posizione del mouse cambia in continuazione e a chi mira serve sempre l'ultimo valore, non una notifica per ogni pixel. |
+| `OnEnable()` | Crea `Controls` se non esiste, registra questo oggetto come gestore delle callback (`SetCallbacks(this)`) e abilita la lettura (`controls.Enable()`). Senza quest'ultima riga, nessuna callback scatterebbe. |
+| `OnMove` | Ad ogni cambio dell'azione "Move", rilancia il `Vector2` letto tramite `MoveEvent`. |
+| `OnPrimaryFire` | Distingue `performed` (tasto premuto → evento `true`) da `canceled` (tasto rilasciato → evento `false`). |
+| `OnAim` | A differenza degli altri due, **non** solleva un evento: salva solo l'ultima posizione del mouse, che `PlayerAiming` leggerà da sé ogni frame. |
 
 **Perché questo pattern conviene**: se domani cambi dispositivo di input (gamepad, touch), tocchi solo `InputReader`. Tutto il resto del gioco continua a funzionare perché dipende solo dagli eventi/proprietà astratti, non dai tasti fisici.
 
-### 5.2 Mira della torretta — `PlayerAiming.cs` (FLUSSO 8 → 13)
+### 5.2 Mira della torretta — `PlayerAiming.cs`
 
 File: `Assets/Scripts/Core/Player/PlayerAiming.cs`
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **8** | Riferimenti da Inspector: `inputReader` (da cui leggere `AimPosition`) e `turretTransform` (cosa far ruotare). |
-| **9** | Il calcolo avviene in `LateUpdate`, **non** `Update`: la mira va calcolata DOPO che il corpo si è già mosso/ruotato, altrimenti la torretta punterebbe alla posizione del tank di un frame prima (uno "scatto" visivo). |
-| **10** | `if (!IsOwner) return;` — solo il proprietario decide dove punta la propria torretta. Sulle copie remote, la rotazione arriva già pronta dalla rete (via `ClientNetworkTransform`, §4). |
-| **11** | `AimPosition` è in coordinate **schermo** (pixel del mouse). |
-| **12** | Si converte in coordinate **mondo** con `Camera.main.ScreenToWorldPoint`, per poterla confrontare con la posizione della torretta nella scena. |
-| **13** | `turretTransform.up = aimWorldPos - (Vector2)turretTransform.position;` — si orienta l'asse "alto" della torretta (dove punta lo sprite del cannone) verso il mouse. |
+| Campi `inputReader`, `turretTransform` | Riferimenti da Inspector: da dove leggere `AimPosition` e cosa far ruotare. |
+| `LateUpdate()` | Il calcolo avviene qui, **non** in `Update`: la mira va calcolata DOPO che il corpo si è già mosso/ruotato, altrimenti la torretta punterebbe alla posizione del tank di un frame prima (uno "scatto" visivo). |
+| `if (!IsOwner) return;` | Solo il proprietario decide dove punta la propria torretta. Sulle copie remote, la rotazione arriva già pronta dalla rete (via `ClientNetworkTransform`, §4). |
+| `AimPosition` → `Camera.main.ScreenToWorldPoint` | `AimPosition` è in coordinate **schermo** (pixel del mouse): si converte in coordinate **mondo** per poterla confrontare con la posizione della torretta nella scena. |
+| `turretTransform.up = aimWorldPos - (Vector2)turretTransform.position;` | Si orienta l'asse "alto" della torretta (dove punta lo sprite del cannone) verso il mouse. |
 
 > **Esempio stupido**: è la telecamera di sorveglianza di Shadow Moses che segue Snake. Il muro su cui è montata (il corpo del tank) può essere girato in qualsiasi modo, ma la telecamera (la torretta) ruota sempre verso il suo bersaglio (il mouse). E ruota DOPO che il muro si è sistemato (`LateUpdate`), altrimenti guarderebbe dove Snake era un frame fa.
 
-### 5.3 Sparo — `ProjectileLauncher.cs` (FLUSSO 14 → 21, + 29)
+### 5.3 Sparo — `ProjectileLauncher.cs`
 
 File: `Assets/Scripts/Core/Player/ProjectileLauncher.cs`
 
@@ -867,83 +864,79 @@ Qui si vede il pattern più importante del progetto: **due proiettili per ogni s
 
 > **Esempio stupido**: la palla di Rocket League. Quando la colpisci, sul TUO schermo parte subito (previsione locale = il dummy), senza aspettare nessuno. Ma la traiettoria vera la decide il server, ed è quella che conta per il goal. Per questo a volte, con un ping alto, vedi la palla "scattare" di colpo in un'altra posizione: è il momento in cui la versione vera corregge quella finta.
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **14** | Dichiarazione dei due prefab (vedi sopra). |
-| **15/16** | `OnNetworkSpawn`/`OnNetworkDespawn`: solo il proprietario si iscrive/disiscrive a `PrimaryFireEvent` (mirror del pattern già visto in §5.1 FLUSSO 3 e in `PlayerAiming` FLUSSO 10). |
-| **17** | In `Update`, se `shouldFire` è vero e il cooldown (`fireRate`) è passato: si chiama **sia** `PrimaryFireServerRpc(...)` **sia** `SpawnDummyProjectile(...)` nello stesso frame. La ServerRpc non è bloccante: è solo l'invio di un messaggio, ritorna subito. Ecco perché il dummy appare "nello stesso istante" pur essendo scritto dopo nel codice. |
-| **18** | `[ServerRpc] PrimaryFireServerRpc` — eseguita SOLO sul server: instanzia il proiettile vero, gli imposta velocità e direzione, ignora la collisione col proprio player, e poi chiama `SpawnDummyProjectileClientRpc` per far comparire il dummy anche sugli altri client. |
-| **19** | `[ClientRpc] SpawnDummyProjectileClientRpc` — eseguita su TUTTI i client. Il proprietario, che ha già mostrato il proprio dummy al FLUSSO 17, si esclude con `if (IsOwner) return;` per non duplicarlo: questa callback serve solo agli ALTRI client. |
-| **20** | `HandlePrimaryFire` — semplice callback che aggiorna il flag `shouldFire`, letto ogni frame dal FLUSSO 17. |
-| **21** | `SpawnDummyProjectile` — helper condiviso tra proprietario (17) e altri client (19): istanzia solo l'effetto visivo, senza alcuna logica di danno (quella vive esclusivamente nel proiettile vero, FLUSSO 18). |
-| **29** | Sempre dentro la ServerRpc (18): si chiama `dealDamage.setOwnerClientId(OwnerClientId)` sul proiettile vero, per sapere in seguito chi non deve poter colpire (vedi §5.6). |
+| Campi `serverProjectilePrefab` / `clientProjectilePrefab` | I due prefab descritti sopra. |
+| `OnNetworkSpawn` / `OnNetworkDespawn` | Solo il proprietario si iscrive/disiscrive a `PrimaryFireEvent` (stesso pattern di `PlayerAiming`, che esce subito se `!IsOwner`). |
+| `Update()` | Se `shouldFire` è vero e il cooldown (`fireRate`) è passato: si chiama **sia** `PrimaryFireServerRpc(...)` **sia** `SpawnDummyProjectile(...)` nello stesso frame. La ServerRpc non è bloccante: è solo l'invio di un messaggio, ritorna subito. Ecco perché il dummy appare "nello stesso istante" pur essendo scritto dopo nel codice. |
+| `[ServerRpc] PrimaryFireServerRpc` | Eseguita SOLO sul server: istanzia il proiettile vero, gli imposta velocità e direzione, ignora la collisione col proprio player, chiama `dealDamage.setOwnerClientId(OwnerClientId)` (per sapere in seguito chi non deve poter colpire, §5.6) e poi chiama `SpawnDummyProjectileClientRpc` per far comparire il dummy anche sugli altri client. |
+| `[ClientRpc] SpawnDummyProjectileClientRpc` | Eseguita su TUTTI i client. Il proprietario, che ha già mostrato il proprio dummy in `Update`, si esclude con `if (IsOwner) return;` per non duplicarlo: questa callback serve solo agli ALTRI client. |
+| `HandlePrimaryFire` | Semplice callback che aggiorna il flag `shouldFire`, letto ogni frame da `Update`. |
+| `SpawnDummyProjectile` | Helper condiviso tra proprietario (`Update`) e altri client (`ClientRpc`): istanzia solo l'effetto visivo, senza alcuna logica di danno (quella vive esclusivamente nel proiettile vero). |
 
 ```
 Client (owner)                          Server                       Altri client
    | preme fuoco                          |                              |
-   | mostra dummy locale (17,21) ---------+------------------------------|  (istantaneo, nessuna attesa)
+   | mostra dummy locale -----------------+------------------------------|  (istantaneo, nessuna attesa)
    | invia PrimaryFireServerRpc --------->|                              |
-   |                                      | spawna proiettile VERO (18)  |
+   |                                      | spawna proiettile VERO       |
    |                                      | invia ClientRpc ------------>|
-   |                                      |                              | mostra il proprio dummy (19,21)
+   |                                      |                              | mostra il proprio dummy
 ```
 
-### 5.4 Fine vita dei proiettili — `DestroySelfOnContact.cs` + `Lifetime.cs` (FLUSSO 22 → 23)
+### 5.4 Fine vita dei proiettili — `DestroySelfOnContact.cs` + `Lifetime.cs`
 
 File: `Assets/Scripts/Utils/DestroySelfOnContact.cs`, `Assets/Scripts/Utils/Lifetime.cs`
 
-- **FLUSSO 22**: il proiettile vero (generato dal server) si autodistrugge al primo contatto. Essendo il server ad averlo istanziato, la distruzione è autorevole e si propaga a tutti.
-- **FLUSSO 23**: `Lifetime` è una rete di sicurezza indipendente, su entrambi i tipi di proiettile (vero e dummy): se non colpiscono nulla entro N secondi, si autodistruggono comunque.
+- **`DestroySelfOnContact`**: il proiettile vero (generato dal server) si autodistrugge al primo contatto. Essendo il server ad averlo istanziato, la distruzione è autorevole e si propaga a tutti.
+- **`Lifetime`**: una rete di sicurezza indipendente, su entrambi i tipi di proiettile (vero e dummy): se non colpiscono nulla entro N secondi, si autodistruggono comunque.
 
-> **Esempio stupido**: le casse TNT di Crash Bandicoot. Esplodono se le tocchi (FLUSSO 22), ma partono anche da sole con il conto alla rovescia "3… 2… 1…" anche se non succede niente (FLUSSO 23) — così nessuna cassa resta nel livello per sempre a occupare memoria.
+> **Esempio stupido**: le casse TNT di Crash Bandicoot. Esplodono se le tocchi (`DestroySelfOnContact`), ma partono anche da sole con il conto alla rovescia "3… 2… 1…" anche se non succede niente (`Lifetime`) — così nessuna cassa resta nel livello per sempre a occupare memoria.
 
-### 5.5 Movimento del corpo — `PlayerMovement.cs` (FLUSSO 24 → 28)
+### 5.5 Movimento del corpo — `PlayerMovement.cs`
 
 File: `Assets/Scripts/Core/Player/PlayerMovement.cs`
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **24** | `OnNetworkSpawn`/`OnNetworkDespawn` (invece di `Start`/`OnDestroy`, troppo presto/tardi nel ciclo di vita di rete): solo il proprietario si iscrive/disiscrive a `MoveEvent`. |
-| **24b** | `turningRate`: velocità angolare MASSIMA in gradi/secondo. Con input parziale (es. joystick a metà corsa) la rotazione scala proporzionalmente (FLUSSO 26). |
-| **25** | Disiscrizione simmetrica al FLUSSO 24. |
-| **26** | In `Update()` (non `FixedUpdate`, perché è puramente visivo): `zRotation = input.x * -turningRate * Time.deltaTime`. Il `Time.deltaTime` serve perché `Update` non gira a intervalli fissi: senza, la velocità di rotazione dipenderebbe dal framerate. |
-| **27** | In `FixedUpdate()` (fisica, intervallo fisso): `rb.velocity = bodyTransform.up * input.y * movementSpeed`. Si usa `bodyTransform.up` e non gli assi del mondo, così il tank avanza sempre "in avanti" rispetto a come è ruotato in quel momento. |
-| **28** | `handleMove` — callback collegata al FLUSSO 24: aggiorna solo `previousMovementInput`, che 26 e 27 leggono ogni frame. |
+| `OnNetworkSpawn` / `OnNetworkDespawn` | Usati invece di `Start`/`OnDestroy` (troppo presto/tardi nel ciclo di vita di rete): solo il proprietario si iscrive/disiscrive a `MoveEvent`, in modo simmetrico. |
+| Campo `turningRate` | Velocità angolare MASSIMA in gradi/secondo. Con input parziale (es. joystick a metà corsa) la rotazione scala proporzionalmente. |
+| `Update()` | Non `FixedUpdate`, perché è puramente visivo: `zRotation = input.x * -turningRate * Time.deltaTime`. Il `Time.deltaTime` serve perché `Update` non gira a intervalli fissi: senza, la velocità di rotazione dipenderebbe dal framerate. |
+| `FixedUpdate()` | Fisica, intervallo fisso: `rb.velocity = bodyTransform.up * input.y * movementSpeed`. Si usa `bodyTransform.up` e non gli assi del mondo, così il tank avanza sempre "in avanti" rispetto a come è ruotato in quel momento. |
+| `handleMove` | Callback collegata a `MoveEvent`: aggiorna solo `previousMovementInput`, che `Update` e `FixedUpdate` leggono ogni frame. |
 
 > **Esempio stupido**: il kart di Crash Team Racing. Sterzi (Update, ogni frame, effetto immediato) e intanto il motore spinge (FixedUpdate, fisica) sempre nella direzione in cui punta il muso del kart — non magicamente verso nord, qualunque sia la curva.
 
-### 5.6 Danno da contatto — `DealDamageOnContact.cs` (FLUSSO 29 → 34)
+### 5.6 Danno da contatto — `DealDamageOnContact.cs`
 
 File: `Assets/Scripts/Core/Combat/DealDamageOnContact.cs` — presente **solo** sul `serverProjectilePrefab`, quindi la sua logica gira per forza solo sul server.
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **30** | Commento di classe: componente esclusivo del proiettile vero. |
-| **31** | `setOwnerClientId` — chiamato dal server subito dopo lo spawn (FLUSSO 29, §5.3) per ricordare chi ha sparato. |
-| **32** | Se l'oggetto colpito non ha `Rigidbody2D`, non è un bersaglio valido (es. muri/scenario): si esce subito. |
-| **33** | Se il bersaglio ha un `NetworkObject` il cui `OwnerClientId` coincide con chi ha sparato, si esce: **non ci si può ferire da soli**. |
-| **34** | Se il bersaglio ha un componente `Health`, gli si infligge danno. |
+| `setOwnerClientId` | Chiamato dal server subito dopo lo spawn (in `PrimaryFireServerRpc`, §5.3) per ricordare chi ha sparato. |
+| `OnTriggerEnter2D`, controllo `Rigidbody2D` | Se l'oggetto colpito non ha `Rigidbody2D`, non è un bersaglio valido (es. muri/scenario): si esce subito. |
+| `OnTriggerEnter2D`, controllo `OwnerClientId` | Se il bersaglio ha un `NetworkObject` il cui `OwnerClientId` coincide con chi ha sparato, si esce: **non ci si può ferire da soli**. |
+| `OnTriggerEnter2D`, `Health` | Se il bersaglio ha un componente `Health`, gli si infligge danno. |
 
 > **Esempio stupido**: il missile di Crash Team Racing. Appena lanciato, ti passa attraverso senza farti nulla: sa chi l'ha sparato (`OwnerClientId`) e ignora il proprio kart. Senza questo controllo, ogni missile esploderebbe in faccia a chi lo lancia nell'istante stesso in cui esce.
 
-### 5.7 Vita e barra vita — `Health.cs` + `HealthDisplay.cs` (FLUSSO 35 → 40)
+### 5.7 Vita e barra vita — `Health.cs` + `HealthDisplay.cs`
 
 File: `Assets/Scripts/Core/Combat/Health.cs`, `Assets/Scripts/Core/Combat/HealthDisplay.cs`
 
-`Health` tiene `currentHealth` in una `NetworkVariable<int>` (scrivibile solo dal server, sincronizzata automaticamente). `HealthDisplay` è puramente estetico (una UI Image "Filled") e vive lato client.
+`Health` tiene `currentHealth` in una `NetworkVariable<int>` (scrivibile solo dal server, sincronizzata automaticamente). `HealthDisplay` è puramente estetico (una UI Image "Filled") e vive lato client: ascolta i cambiamenti di `Health.currentHealth` e aggiorna la barra a schermo.
 
-| FLUSSO | Cosa succede |
+| Dove | Cosa succede |
 |---|---|
-| **35** | Commento di classe di `HealthDisplay`: ascolta i cambiamenti di `Health.currentHealth` e aggiorna la barra a schermo. |
-| **36** | `OnNetworkSpawn` — controllo `IsClient` (non `IsOwner`, non `IsServer`): OGNI client deve vedere la barra vita aggiornata, anche guardando i tank altrui. Ci si iscrive a `OnValueChanged` e si inizializza subito la barra. |
-| **37** | Disiscrizione simmetrica in `OnNetworkDespawn`. |
-| **38** | `handleHealthChanged` — normalizza la vita corrente sul massimo (`newHealth / MaxHealth`), perché `Image.fillAmount` va da 0 a 1. |
-| **39** | `Health.OnNetworkSpawn` — solo il server inizializza `currentHealth.Value = MaxHealth`. Se lo facesse anche ogni client, ci sarebbero scritture concorrenti non autorizzate. |
-| **40** | `modifyHealth` — nessun controllo `IsServer` esplicito: il metodo va chiamato solo da codice già server-side (es. `DealDamageOnContact`, FLUSSO 34). Anche se venisse chiamato per errore da un client, Netcode rifiuterebbe comunque la scrittura sulla `NetworkVariable`. |
+| `HealthDisplay.OnNetworkSpawn` | Controllo `IsClient` (non `IsOwner`, non `IsServer`): OGNI client deve vedere la barra vita aggiornata, anche guardando i tank altrui. Ci si iscrive a `OnValueChanged` e si inizializza subito la barra. |
+| `HealthDisplay.OnNetworkDespawn` | Disiscrizione simmetrica. |
+| `HealthDisplay.handleHealthChanged` | Normalizza la vita corrente sul massimo (`newHealth / MaxHealth`), perché `Image.fillAmount` va da 0 a 1. |
+| `Health.OnNetworkSpawn` | Solo il server inizializza `currentHealth.Value = MaxHealth`. Se lo facesse anche ogni client, ci sarebbero scritture concorrenti non autorizzate. |
+| `Health.modifyHealth` | Nessun controllo `IsServer` esplicito: il metodo va chiamato solo da codice già server-side (es. `DealDamageOnContact`, §5.6). Anche se venisse chiamato per errore da un client, Netcode rifiuterebbe comunque la scrittura sulla `NetworkVariable`. |
 
 > **Esempio stupido**: la barra LIFE di Snake in alto a sinistra in Metal Gear Solid. Si limita a MOSTRARE quanta vita hai (HealthDisplay). È il gioco (server) a decidere quanta vita ti toglie il proiettile di una guardia (Health). Colorare di verde la barra con Paint non ti cura.
 
-### 5.8 Sistema monete — `Coin.cs`, `CoinWallet.cs`, `RespawningCoin.cs`, `CoinSpawner.cs` (FLUSSO 41 → 54)
+### 5.8 Sistema monete — `Coin.cs`, `CoinWallet.cs`, `RespawningCoin.cs`, `CoinSpawner.cs`
 
 Questa è la catena più lunga e riassume TUTTI i pattern precedenti insieme: server authority, feedback client immediato, eventi, respawn.
 
@@ -953,51 +946,56 @@ Questa è la catena più lunga e riassume TUTTI i pattern precedenti insieme: se
 - `Assets/Scripts/Core/Coins/RespawningCoin.cs` — moneta concreta che, invece di sparire, ricompare altrove.
 - `Assets/Scripts/Core/Coins/CoinSpawner.cs` — genera le monete all'avvio e le ricolloca quando vengono raccolte.
 
+#### Gli elementi in gioco
+
+| Dove | Cosa fa |
+|---|---|
+| `Coin.collect` (abstract) | Il valore di ritorno è significativo solo se chi lo calcola è il server: le sottoclassi devono restituire 0 se eseguite su un client. |
+| `RespawningCoin.onCollected` (evento) | Sollevato solo quando `collect()` è eseguito lato server: il modo con cui la singola moneta avvisa il `CoinSpawner` che l'ha creata. |
+| `RespawningCoin.previousPosition` (campo) | Memorizza la posizione dell'ultimo frame, usata da `Update` per accorgersi che la moneta è stata spostata. |
+
 #### La catena completa, in ordine di esecuzione
 
-| FLUSSO | File | Cosa succede |
+| # | Dove | Cosa succede |
 |---|---|---|
-| **48** | `CoinSpawner` (classe) | All'avvio genera un numero fisso di `RespawningCoin` in punti casuali della mappa; quando una viene raccolta, la ricolloca invece di distruggerla e ricrearla. |
-| **49** | `CoinSpawner.OnNetworkSpawn` | Solo il server decide dove spawnare le monete (mirror di `Health.OnNetworkSpawn`, FLUSSO 39). |
-| **50** | `CoinSpawner.spawnCoin` | Dopo aver instanziato e spawnato in rete la moneta, il spawner si iscrive al SUO evento `onCollected` (FLUSSO 46), per sapere quando quella specifica istanza viene raccolta. |
-| **41** | `CoinWallet.OnTriggerEnter2D` | Il trigger 2D avviene in locale su OGNI client che possiede fisicamente il collider del wallet: si chiama `coin.collect()` **ovunque**, sia server che client. |
-| **45** | `Coin.collect` (abstract) | Il valore di ritorno è significativo solo se chi lo calcola è il server: le sottoclassi devono restituire 0 se eseguite su un client. |
-| **42** | `RespawningCoin.collect` (ramo client) | `if (!IsServer)`: nasconde la moneta localmente (`showCoin(false)`) per un feedback visivo immediato e ritorna sempre 0. Non è autorevole: non può decidere se la moneta è già stata raccolta né quanto valga. |
-| **43** | `RespawningCoin.collect` (ramo server) | Controllo autorevole: se `alreadyCollected` è già vero (doppio trigger nello stesso frame, o due giocatori), ritorna 0 per non accreditare due volte. |
-| **51** | `RespawningCoin.collect` (dopo aver marcato `alreadyCollected = true`) | Si invoca `onCollected?.Invoke(this)`: notifica il `CoinSpawner` che questa moneta va ricollocata. |
-| **44** | `CoinWallet.OnTriggerEnter2D` | `if (!IsServer) return;` poi `totalCoins.Value += coinValue`: solo il server può scrivere sulla `NetworkVariable`. Sui client `coinValue` è comunque sempre 0 (FLUSSO 42), quindi qui non si tenterebbe comunque nulla di dannoso. |
-| **52** | `CoinSpawner.handleCoinCollected` | Callback collegata al FLUSSO 51, gira solo sul server: sposta la moneta in un nuovo punto libero invece di distruggerla. |
-| **53** | `RespawningCoin.Reset` | Chiamato subito dopo dal FLUSSO 52: azzera `alreadyCollected`, così il controllo autorevole (FLUSSO 43) torni a considerarla raccoglibile. |
-| **54** | `RespawningCoin.Update` | Gira su OGNI client: la nuova `transform.position` decisa dal server (FLUSSO 52) arriva tramite la normale sincronizzazione di rete (`NetworkTransform`). Quando la posizione cambia rispetto al frame precedente, è il segnale che la moneta è stata rispawnata altrove: si annulla quindi il nascondimento locale fatto al FLUSSO 42 (`showCoin(true)`), perché la visibilità dello `SpriteRenderer` non è automaticamente sincronizzata dalla rete, solo il transform lo è. |
-| **46** | `RespawningCoin.onCollected` (dichiarazione evento) | Sollevato solo quando `collect()` è eseguito lato server (FLUSSO 51): il modo con cui la singola istanza avvisa il `CoinSpawner` che l'ha creata. |
-| **47** | `RespawningCoin.previousPosition` (campo) | Memorizza la posizione dell'ultimo frame, usata dal FLUSSO 54 per rilevare il teleport. |
+| 1 | `CoinSpawner` (classe) | All'avvio genera un numero fisso di `RespawningCoin` in punti casuali della mappa; quando una viene raccolta, la ricolloca invece di distruggerla e ricrearla. |
+| 2 | `CoinSpawner.OnNetworkSpawn` | Solo il server decide dove spawnare le monete (come in `Health.OnNetworkSpawn`). |
+| 3 | `CoinSpawner.spawnCoin` | Dopo aver istanziato e spawnato in rete la moneta, lo spawner si iscrive al SUO evento `onCollected`, per sapere quando quella specifica istanza viene raccolta. |
+| 4 | `CoinWallet.OnTriggerEnter2D` | Il trigger 2D avviene in locale su OGNI client che possiede fisicamente il collider del wallet: si chiama `coin.collect()` **ovunque**, sia server che client. |
+| 5 | `RespawningCoin.collect` (ramo client) | `if (!IsServer)`: nasconde la moneta localmente (`showCoin(false)`) per un feedback visivo immediato e ritorna sempre 0. Non è autorevole: non può decidere se la moneta è già stata raccolta né quanto valga. |
+| 6 | `RespawningCoin.collect` (ramo server) | Controllo autorevole: se `alreadyCollected` è già vero (doppio trigger nello stesso frame, o due giocatori), ritorna 0 per non accreditare due volte. |
+| 7 | `RespawningCoin.collect` (dopo `alreadyCollected = true`) | Si invoca `onCollected?.Invoke(this)`: notifica il `CoinSpawner` che questa moneta va ricollocata. |
+| 8 | `CoinWallet.OnTriggerEnter2D` | `if (!IsServer) return;` poi `totalCoins.Value += coinValue`: solo il server può scrivere sulla `NetworkVariable`. Sui client `coinValue` è comunque sempre 0 (passo 5), quindi qui non si tenterebbe comunque nulla di dannoso. |
+| 9 | `CoinSpawner.handleCoinCollected` | Callback collegata a `onCollected`, gira solo sul server: sposta la moneta in un nuovo punto libero invece di distruggerla. |
+| 10 | `RespawningCoin.Reset` | Chiamato subito dopo da `handleCoinCollected`: azzera `alreadyCollected`, così il controllo autorevole (passo 6) torna a considerarla raccoglibile. |
+| 11 | `RespawningCoin.Update` | Gira su OGNI client: la nuova `transform.position` decisa dal server arriva tramite la normale sincronizzazione di rete (`NetworkTransform`). Quando la posizione cambia rispetto a `previousPosition`, è il segnale che la moneta è stata rispawnata altrove: si annulla quindi il nascondimento locale del passo 5 (`showCoin(true)`), perché la visibilità dello `SpriteRenderer` non è automaticamente sincronizzata dalla rete, solo il transform lo è. |
 
 #### Diagramma dell'intero ciclo di vita di una moneta
 
 ```
 CoinSpawner (server)                RespawningCoin                     CoinWallet (ogni client)
-      |  spawna N monete (48-50)         |                                    |
+      |  spawna N monete (1-3)            |                                    |
       |  si iscrive a onCollected  ------>|                                    |
-      |                                   |            <---- trigger 2D -------|  (41, su OGNI client)
-      |                                   |  ramo CLIENT (42): nasconde,       |
+      |                                   |            <---- trigger 2D -------|  (4, su OGNI client)
+      |                                   |  ramo CLIENT (5): nasconde,        |
       |                                   |  ritorna 0                         |
-      |                                   |  ramo SERVER (43): valida,         |
+      |                                   |  ramo SERVER (6): valida,          |
       |                                   |  ritorna coinValue                 |
-      |                                   |  invoca onCollected (51) --------->|
+      |                                   |  invoca onCollected (7) ---------->|
       |  <----------------------------- evento                                 |
-      |                                                                        |  se server: totalCoins += (44)
-      |  handleCoinCollected (52):                                             |
+      |                                                                        |  se server: totalCoins += (8)
+      |  handleCoinCollected (9):                                              |
       |    - sposta la moneta                                                  |
-      |    - coin.Reset() (53)                                                 |
+      |    - coin.Reset() (10)                                                 |
       |                                   |                                    |
       |         nuova posizione si propaga via NetworkTransform                |
-      |                                   |  Update rileva il cambio (54):     |
+      |                                   |  Update rileva il cambio (11):     |
       |                                   |  showCoin(true) — la fa ricomparire|
 ```
 
-> **Esempio stupido**: i frutti Wumpa di Crash Bandicoot, in una versione multiplayer. Ci passi sopra e il frutto sparisce SUBITO dal tuo schermo con il suo "pop" (feedback client immediato, FLUSSO 42). Ma il contatore dei Wumpa lo aggiorna solo il server (FLUSSO 44). Se tu e un altro giocatore ci passate sopra nello stesso istante, il server ne dà uno solo (FLUSSO 43). Poi, invece di distruggere il frutto e crearne uno nuovo, il server lo teletrasporta in un altro punto del livello (FLUSSO 52-54).
+> **Esempio stupido**: i frutti Wumpa di Crash Bandicoot, in una versione multiplayer. Ci passi sopra e il frutto sparisce SUBITO dal tuo schermo con il suo "pop" (feedback client immediato, passo 5). Ma il contatore dei Wumpa lo aggiorna solo il server (passo 8). Se tu e un altro giocatore ci passate sopra nello stesso istante, il server ne dà uno solo (passo 6). Poi, invece di distruggere il frutto e crearne uno nuovo, il server lo teletrasporta in un altro punto del livello (passi 9-11).
 
-### 5.9 Costo in monete per sparare, e polvere sui proiettili distrutti — `ProjectileLauncher.cs`, `CoinWallet.cs`, `SpawnOnDestroy.cs` (FLUSSO 55 → 59)
+### 5.9 Costo in monete per sparare, e polvere sui proiettili distrutti — `ProjectileLauncher.cs`, `CoinWallet.cs`, `SpawnOnDestroy.cs`
 
 File coinvolti:
 - `Assets/Scripts/Utils/SpawnOnDestroy.cs` — nuovo componente puramente estetico.
@@ -1006,93 +1004,25 @@ File coinvolti:
 
 Prima esistevano solo le monete come *punteggio*; ora sparare **costa** monete, riusando esattamente lo stesso `CoinWallet` visto in §5.8 sia per accreditarle sia per scalarle. Segue la stessa "regola d'oro": il client fa un controllo rapido per non sprecare rete, ma solo il server decide davvero.
 
-| FLUSSO | File | Cosa succede |
-|---|---|---|
-| **55** | `SpawnOnDestroy.cs` | Componente estetico agganciato a `OnDestroy` (ciclo di vita di Unity, non di rete): va sul proiettile dummy e, quando questo viene distrutto (per contatto o per `Lifetime`, FLUSSO 23), instanzia in locale un effetto (es. `DustCloud`), senza `Spawn()` di rete. |
-| **56** | `ProjectileLauncher.cs` | Campo `wallet`: riferimento al `CoinWallet` del proprietario, usato dai controlli sotto. |
-| **56b** | `ProjectileLauncher.cs` | Campo `costToFire`: costo in monete di ogni sparo. |
-| **57** | `ProjectileLauncher.cs` | Campo `timer`: cooldown tra due spari, scalato ogni frame in `Update` e ricaricato a `1/fireRate` dopo uno sparo riuscito. |
-| **57b** | `ProjectileLauncher.Update` | Controllo *cosmetico* lato client: se le monete non bastano, evita di inviare la ServerRpc e di mostrare un dummy che il server rifiuterebbe comunque. Non è autorevole. |
-| **58** | `ProjectileLauncher.PrimaryFireServerRpc` | Controllo *autorevole* lato server: ripete la stessa verifica (perché il controllo client, FLUSSO 57b, è solo un'ottimizzazione aggirabile) e, solo se le monete bastano davvero, procede e scala il costo. |
-| **59** | `CoinWallet.spendCoins` | Sottrae `costToFire` da `totalCoins`, la stessa `NetworkVariable` accreditata da `OnTriggerEnter2D` al FLUSSO 44. Chiamato solo dal server. |
+| Dove | Cosa succede |
+|---|---|
+| `SpawnOnDestroy.OnDestroy` | Componente estetico agganciato a `OnDestroy` (ciclo di vita di Unity, non di rete): va sul proiettile dummy e, quando questo viene distrutto (per contatto o per `Lifetime`, §5.4), istanzia in locale un effetto (es. `DustCloud`), senza `Spawn()` di rete. |
+| `ProjectileLauncher`, campi `wallet` e `costToFire` | Riferimento al `CoinWallet` del proprietario e costo in monete di ogni sparo. |
+| `ProjectileLauncher`, campo `timer` | Cooldown tra due spari, scalato ogni frame in `Update` e ricaricato a `1/fireRate` dopo uno sparo riuscito. |
+| `ProjectileLauncher.Update` | Controllo *cosmetico* lato client: se le monete non bastano, evita di inviare la ServerRpc e di mostrare un dummy che il server rifiuterebbe comunque. Non è autorevole. |
+| `ProjectileLauncher.PrimaryFireServerRpc` | Controllo *autorevole* lato server: ripete la stessa verifica (perché il controllo client è solo un'ottimizzazione aggirabile) e, solo se le monete bastano davvero, procede e scala il costo. |
+| `CoinWallet.spendCoins` | Sottrae `costToFire` da `totalCoins`, la stessa `NetworkVariable` accreditata da `OnTriggerEnter2D` (§5.8). Chiamato solo dal server. |
 
-> **Esempio stupido**: il boost di Rocket League. Le monete sono i cuscinetti di boost che raccogli sul campo, e sparare è premere il tasto boost. Il tuo gioco controlla per primo "ho ancora boost nella barra?" e, se è vuota, non prova neanche (client, FLUSSO 57b). Ma è il server a controllare davvero quanto boost hai e a scalarlo (FLUSSO 58-59): se modifichi il gioco per avere boost infinito, il server ti risponde comunque "barra vuota".
-
----
-
-## 6. Tabella riepilogativa di tutti i FLUSSO (solo gameplay)
-
-Riferimento rapido, in ordine numerico. "∞" = catena locale a `ClientNetworkTransform.cs` (numerazione indipendente). Il bootstrap/rete (`ApplicationController`, `ClientSingleton`/`HostSingleton`, `AuthenticationWrapper`, `ClientGameManager`/`HostGameManager`) **non è più numerato**: è documentato per file/argomento in §2.
-
-| # | File | In breve |
-|---|---|---|
-| ∞0-8 | `ClientNetworkTransform.cs` | Meccanismo di sync client-authoritative del transform (vedi §4) |
-| 0 | `InputReader.cs` | `using static Controls` |
-| 1 | `InputReader.cs` | Contratto `IPlayerActions` |
-| 2 | `InputReader.cs` | Campo `controls` |
-| 3 | `InputReader.cs` | Eventi `PrimaryFireEvent`/`MoveEvent` |
-| 3b | `InputReader.cs` | `AimPosition` a polling |
-| 4-6 | `InputReader.cs` | `OnEnable`: crea/registra/abilita i controlli |
-| 7a-7c | `InputReader.cs` | `OnMove` / `OnPrimaryFire` / `OnAim` |
-| 8 | `PlayerAiming.cs` | Riferimenti Inspector |
-| 9 | `PlayerAiming.cs` | Perché `LateUpdate` |
-| 10 | `PlayerAiming.cs` | Solo owner mira |
-| 11-12 | `PlayerAiming.cs` | Schermo → mondo |
-| 13 | `PlayerAiming.cs` | Orienta la torretta |
-| 14 | `ProjectileLauncher.cs` | Prefab server vs dummy |
-| 15-16 | `ProjectileLauncher.cs` | Iscrizione/disiscrizione `PrimaryFireEvent` |
-| 17 | `ProjectileLauncher.cs` | Sparo su due binari (RPC + dummy) |
-| 18 | `ProjectileLauncher.cs` | `PrimaryFireServerRpc` |
-| 19 | `ProjectileLauncher.cs` | `SpawnDummyProjectileClientRpc` |
-| 20 | `ProjectileLauncher.cs` | `HandlePrimaryFire` |
-| 21 | `ProjectileLauncher.cs` | Helper `SpawnDummyProjectile` |
-| 22 | `DestroySelfOnContact.cs` | Autodistruzione al contatto |
-| 23 | `Lifetime.cs` | Autodistruzione a tempo |
-| 24-24b | `PlayerMovement.cs` | Iscrizione `MoveEvent` + `turningRate` |
-| 25 | `PlayerMovement.cs` | Disiscrizione |
-| 26 | `PlayerMovement.cs` | Rotazione in `Update` |
-| 27 | `PlayerMovement.cs` | Velocità in `FixedUpdate` |
-| 28 | `PlayerMovement.cs` | `handleMove` |
-| 29 | `ProjectileLauncher.cs` | `setOwnerClientId` |
-| 30 | `DealDamageOnContact.cs` | Componente solo server |
-| 31 | `DealDamageOnContact.cs` | `setOwnerClientId` |
-| 32-33 | `DealDamageOnContact.cs` | Validazione bersaglio + no self-damage |
-| 34 | `DealDamageOnContact.cs` | Applica danno |
-| 35 | `HealthDisplay.cs` | Ruolo del componente |
-| 36-37 | `HealthDisplay.cs` | Iscrizione/disiscrizione `OnValueChanged` |
-| 38 | `HealthDisplay.cs` | Normalizza `fillAmount` |
-| 39 | `Health.cs` | Solo server inizializza vita |
-| 40 | `Health.cs` | `modifyHealth`, nessun `IsServer` esplicito necessario |
-| 41 | `CoinWallet.cs` | `collect()` chiamato ovunque |
-| 42 | `RespawningCoin.cs` | Ramo client: nasconde + ritorna 0 |
-| 43 | `RespawningCoin.cs` | Ramo server: controllo autorevole |
-| 44 | `CoinWallet.cs` | Solo server accredita `totalCoins` |
-| 45 | `Coin.cs` | Contratto di `collect()` |
-| 46 | `RespawningCoin.cs` | Evento `onCollected` |
-| 47 | `RespawningCoin.cs` | Campo `previousPosition` |
-| 48 | `CoinSpawner.cs` | Ruolo della classe |
-| 49 | `CoinSpawner.cs` | `OnNetworkSpawn`, solo server spawna |
-| 50 | `CoinSpawner.cs` | Iscrizione a `onCollected` |
-| 51 | `RespawningCoin.cs` | Invoke `onCollected` |
-| 52 | `CoinSpawner.cs` | `handleCoinCollected`, riposiziona |
-| 53 | `RespawningCoin.cs` | `Reset()` |
-| 54 | `RespawningCoin.cs` | `Update()`, ri-mostra la moneta |
-| 55 | `SpawnOnDestroy.cs` | `OnDestroy`, effetto estetico locale |
-| 56-56b | `ProjectileLauncher.cs` | Campi `wallet` e `costToFire` |
-| 57 | `ProjectileLauncher.cs` | Campo `timer` (cooldown sparo) |
-| 57b | `ProjectileLauncher.cs` | Controllo monete lato client (cosmetico) |
-| 58 | `ProjectileLauncher.cs` | Controllo monete lato server (autorevole) |
-| 59 | `CoinWallet.cs` | `spendCoins`, scala `totalCoins` |
-
-**Bootstrap/rete (`ApplicationController`, `ClientSingleton`/`HostSingleton`, `AuthenticationWrapper`, `ClientGameManager`/`HostGameManager`, `MainMenu`)**: vedi §2, organizzato per file. In breve: `ApplicationController` decide dedicated server vs client e crea sempre entrambi i singleton (§2.1); `ClientSingleton`/`HostSingleton` sono contenitori "singleton lazy" per le rispettive classi C# pure (§2.2, §2.4); `AuthenticationWrapper` gestisce il login anonimo con una macchina a stati (§2.3, invariato dal corso); `HostGameManager.StartHostAsync`/`ClientGameManager.startClientAsync` creano/entrano in una `Session` tramite `MultiplayerService.Instance` invece di chiamare `Relay.Instance` direttamente (§2.5, §2.6 per il confronto dettagliato col corso).
+> **Esempio stupido**: il boost di Rocket League. Le monete sono i cuscinetti di boost che raccogli sul campo, e sparare è premere il tasto boost. Il tuo gioco controlla per primo "ho ancora boost nella barra?" e, se è vuota, non prova neanche (client, `Update`). Ma è il server a controllare davvero quanto boost hai e a scalarlo (`PrimaryFireServerRpc` + `spendCoins`): se modifichi il gioco per avere boost infinito, il server ti risponde comunque "barra vuota".
 
 ---
 
-## 7. Catalogo di pattern riusabili (per un gioco nuovo, da zero)
+
+## 6. Catalogo di pattern riusabili (per un gioco nuovo, da zero)
 
 Qui sotto, ogni pattern è estratto dal progetto ma riscritto in forma **generica**, scollegata dai tank, pronta da adattare a qualsiasi altro gioco.
 
-### 7.1 Stato autorevole con `NetworkVariable`
+### 6.1 Stato autorevole con `NetworkVariable`
 
 Quando un valore deve essere uguale per tutti e non falsificabile da un client (punteggio, vita, oro, ecc.).
 
@@ -1117,11 +1047,11 @@ public class ScorePlayer : NetworkBehaviour
 
 Un client chiama `AddPointServerRpc()`, ma è il server ad eseguire l'incremento vero. Tutti i client vedono `score.Value` aggiornarsi da solo, senza scrivere altro codice di sincronizzazione.
 
-### 7.2 Movimento client-authoritative
+### 6.2 Movimento client-authoritative
 
 Quando serve zero lag sui controlli del proprio personaggio (vedi §4 per l'implementazione completa): sostituisci il `NetworkTransform` standard con una variante che, per il solo owner, imposta `CanCommitToTransform = IsOwner` e ritorna `false` da `OnIsServerAuthoritative()`.
 
-### 7.3 Feedback immediato al client ("dummy pattern")
+### 6.3 Feedback immediato al client ("dummy pattern")
 
 Quando un'azione deve SEMBRARE istantanea anche se la conferma autorevole richiede un giro di rete (vedi §5.3).
 
@@ -1141,7 +1071,7 @@ private void FireServerRpc()
 
 Regola pratica: **tutto ciò che è "solo estetica" può girare ovunque; tutto ciò che "conta" (danno, punteggio, stato) deve girare solo dove `IsServer` è vero.**
 
-### 7.4 Cheat-sheet: quale controllo usare
+### 6.4 Cheat-sheet: quale controllo usare
 
 | Proprietà | Vero quando | Usala per |
 |---|---|---|
@@ -1153,7 +1083,7 @@ Regola pratica: **tutto ciò che è "solo estetica" può girare ovunque; tutto c
 
 Domanda da farsi sempre: *"questo codice deve girare per il PROPRIETARIO, per TUTTI I CLIENT, o solo per IL SERVER?"* — è la prima cosa da decidere prima di scrivere un `if`.
 
-### 7.5 Iscriviti/disiscriviti in `OnNetworkSpawn`/`OnNetworkDespawn`
+### 6.5 Iscriviti/disiscriviti in `OnNetworkSpawn`/`OnNetworkDespawn`
 
 Mai in `Start`/`OnDestroy` (troppo presto/tardi nel ciclo di vita di rete). Sempre a specchio, per evitare eventi che richiamano componenti già distrutti.
 
@@ -1171,7 +1101,7 @@ public override void OnNetworkDespawn()
 }
 ```
 
-### 7.6 Bus di eventi disaccoppiato (pattern `InputReader`)
+### 6.6 Bus di eventi disaccoppiato (pattern `InputReader`)
 
 Uno `ScriptableObject` condiviso che espone eventi C# invece di essere letto direttamente da tutti. Utile ovunque serva scollegare "chi genera un dato" da "chi lo consuma" (non solo per l'input: es. un `GameEventChannel` per "partita iniziata", "partita finita", ecc.).
 
@@ -1184,7 +1114,7 @@ public class GameEvents : ScriptableObject
 }
 ```
 
-### 7.7 Controllo idempotente lato server ("già fatto?")
+### 6.7 Controllo idempotente lato server ("già fatto?")
 
 Quando un'azione potrebbe arrivare due volte nello stesso frame (doppio trigger, due giocatori, pacchetti duplicati) e va eseguita una volta sola (vedi `alreadyCollected` in `RespawningCoin`, `isDead` in `Health`).
 
@@ -1200,7 +1130,7 @@ public void DoAuthoritativeThing()
 }
 ```
 
-### 7.8 Respawn/riposiziona invece di distruggi/ricrea
+### 6.8 Respawn/riposiziona invece di distruggi/ricrea
 
 Quando un oggetto "raccoglibile" deve ricomparire (moneta, powerup): non distruggerlo e ricrearlo, spostalo e resettalo. Risparmia una `Spawn()`/`Despawn()` di rete e mantiene stabile il suo `NetworkObjectId`.
 
@@ -1218,7 +1148,7 @@ public void Collect()
 public void ResetState() => alreadyCollected = false;
 ```
 
-### 7.9 Escludi il proprietario dal proprio effetto (no self-damage)
+### 6.9 Escludi il proprietario dal proprio effetto (no self-damage)
 
 Quando un proiettile/effetto non deve colpire chi lo ha generato: salva l'`OwnerClientId` allo spawn e confrontalo al momento dell'impatto (vedi §5.6).
 
@@ -1235,7 +1165,7 @@ private void OnTriggerEnter2D(Collider2D other)
 }
 ```
 
-### 7.10 Avvio sessione tramite Sessions/Relay (niente IP diretto)
+### 6.10 Avvio sessione tramite Sessions/Relay (niente IP diretto)
 
 Quando l'host e i client non sono sulla stessa rete locale e non puoi contare su IP pubblici/port forwarding (praticamente sempre, fuori da un test in LAN). Vedi §2.5 e §2.6 per l'implementazione completa e per il confronto con l'API diretta di Relay (deprecata, vedi nota sotto).
 
@@ -1280,7 +1210,7 @@ public async Task JoinFromListAsync()
 
 ---
 
-## 8. Checklist mentale per ogni nuovo componente di rete
+## 7. Checklist mentale per ogni nuovo componente di rete
 
 Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste domande (ricalcano esattamente le decisioni prese in questo progetto):
 
@@ -1291,19 +1221,19 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
 3. **Serve che TUTTI (anche chi non è owner né server) vedano qualcosa (UI, barra vita, effetto)?**
    → Usa `IsClient`, e ascolta un cambiamento di `NetworkVariable` (`OnValueChanged`) invece di leggerla in `Update`.
 4. **Voglio feedback istantaneo senza aspettare il giro di rete?**
-   → Applica il "dummy pattern" (§7.3): mostra subito in locale, conferma dopo via `ServerRpc`.
+   → Applica il "dummy pattern" (§6.3): mostra subito in locale, conferma dopo via `ServerRpc`.
 5. **Questa azione potrebbe arrivare due volte per errore?**
-   → Aggiungi un flag idempotente (§7.7), controllato solo lato server.
+   → Aggiungi un flag idempotente (§6.7), controllato solo lato server.
 6. **Mi sto iscrivendo a un evento?**
    → Fallo in `OnNetworkSpawn`, disiscriviti a specchio in `OnNetworkDespawn`.
 7. **Un oggetto raccoglibile deve "sparire e ricomparire"?**
-   → Non distruggerlo: riposizionalo e resettane lo stato (§7.8).
+   → Non distruggerlo: riposizionalo e resettane lo stato (§6.8).
 8. **Un effetto/proiettile può colpire chi l'ha generato?**
-   → Salva l'`OwnerClientId` e confrontalo prima di applicare l'effetto (§7.9).
+   → Salva l'`OwnerClientId` e confrontalo prima di applicare l'effetto (§6.9).
 
 ---
 
-## 9. Glossario rapido
+## 8. Glossario rapido
 
 - **Host**: istanza che è contemporaneamente server e client.
 - **Server**: istanza autorevole, senza rendering per il giocatore (a meno che non sia anche Host).
@@ -1323,4 +1253,4 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
 
 ---
 
-*Documento aggiornato a ottobre 2026 (aggiunte le Lobby, §2.6.7). Le sezioni di gameplay (§1, §4, §5, §6) restano generate a partire dai commenti `[FLUSSO N]` presenti nel codice sorgente: se aggiungi nuove funzionalità di gameplay, continua la numerazione da 90 in poi e aggiorna la tabella in §6. La sezione di bootstrap/rete (§2) non usa più questa numerazione: è stata riscritta per documentare la migrazione a Unity Multiplayer Services SDK (Sessions), resa necessaria dalla deprecazione dei pacchetti standalone Lobby/Relay/Matchmaker/Multiplay avvenuta dopo la registrazione del corso — vedi §2.6 per il dettaglio completo.*
+*Documento aggiornato a ottobre 2026 (aggiunte le Lobby, §2.6.7). Le sezioni di gameplay (§4, §5) seguono l'ordine di esecuzione durante una partita: se aggiungi nuove funzionalità di gameplay, aggiungi una sottosezione in §5 nel punto della catena in cui il codice viene eseguito. La sezione di bootstrap/rete (§2) è organizzata per file e documenta la migrazione a Unity Multiplayer Services SDK (Sessions) — vedi §2.6 per il dettaglio completo.*

@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
-// [FLUSSO 0] "using static Controls;" ci permette di scrivere IPlayerActions e Controls
+// "using static Controls;" ci permette di scrivere IPlayerActions e Controls
 // senza doverli prefissare (es. Controls.IPlayerActions). "Controls" è la classe
 // GENERATA AUTOMATICAMENTE dall'asset Controls.inputactions: non la scriviamo noi.
 using static Controls;
@@ -18,18 +18,18 @@ using static Controls;
 /// (es. movimento del corpo, rotazione della torretta, sparo) evitando che
 /// ognuno debba istanziare la propria mappa di controlli.
 /// </summary>
-// [FLUSSO 1] Implementando "IPlayerActions" (interfaccia definita in Controls.cs)
+// Implementando "IPlayerActions" (interfaccia definita in Controls.cs)
 // firmiamo un "contratto": ci impegniamo a fornire i metodi OnMove, OnPrimaryFire e OnAim.
 // Sara' l'Input System a chiamarli quando l'utente muove il mouse o preme i tasti.
 [CreateAssetMenu(fileName = "InputReader", menuName = "Input/Input Reader")]
 public class InputReader : ScriptableObject, IPlayerActions
 {
-    // [FLUSSO 2] "controls" è la nostra istanza della classe generata: rappresenta
+    // "controls" è la nostra istanza della classe generata: rappresenta
     // in codice l'intero asset Controls.inputactions (mappe, azioni e binding).
     private Controls controls;
 
     /// <summary>Sollevato quando il fuoco primario viene premuto (true) o rilasciato (false).</summary>
-    // [FLUSSO 3] Questi due eventi sono il "megafono" verso il resto del gioco: noi
+    // Questi due eventi sono il "megafono" verso il resto del gioco: noi
     // leggiamo l'input grezzo e lo ri-emettiamo come evento, cosi' chi ascolta
     // (es. PlayerMovement) non deve sapere nulla dell'Input System.
     public event Action<bool> PrimaryFireEvent;
@@ -38,7 +38,7 @@ public class InputReader : ScriptableObject, IPlayerActions
     public event Action<Vector2> MoveEvent;
 
     /// <summary>Posizione di mira corrente, in coordinate schermo (pixel), sempre leggibile.</summary>
-    // [FLUSSO 3b] La mira NON usa un evento ma una proprieta' "a lettura continua" (polling):
+    // La mira NON usa un evento ma una proprieta' "a lettura continua" (polling):
     // la posizione del puntatore cambia di continuo e a chi punta la torretta (PlayerAim)
     // serve sempre il valore piu' aggiornato ogni frame, non una notifica per ogni pixel.
     // Percio' qui memorizziamo solo l'ultimo valore letto e lo esponiamo in sola lettura.
@@ -51,12 +51,12 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// </summary>
     private void OnEnable()
     {
-        // [FLUSSO 4] Alla prima abilitazione istanziamo l'oggetto Controls.
+        // Alla prima abilitazione istanziamo l'oggetto Controls.
         if (controls == null)
         {
             controls = new Controls();
 
-            // [FLUSSO 5] Colleghiamo l'input al nostro codice.
+            // Colleghiamo l'input al nostro codice.
             // "controls.Player" = la action map "Player" (contiene Move e PrimaryFire).
             // SetCallbacks(this) aggancia i nostri OnMove/OnPrimaryFire a TUTTE le fasi
             // (started/performed/canceled) di quelle azioni. Da qui in poi, quando premi
@@ -64,7 +64,7 @@ public class InputReader : ScriptableObject, IPlayerActions
             controls.Player.SetCallbacks(this);
         }
 
-        // [FLUSSO 6] Attiviamo la lettura dell'input: senza Enable() le callback non scattano.
+        // Attiviamo la lettura dell'input: senza Enable() le callback non scattano.
         controls.Enable();
     }
 
@@ -74,7 +74,7 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// </summary>
     public void OnMove(InputAction.CallbackContext context)
     {
-        // [FLUSSO 7a] Chiamato dall'Input System a ogni cambio dell'azione "Move".
+        // Chiamato dall'Input System a ogni cambio dell'azione "Move".
         // "context" è la "busta" con le info sull'evento: qui ci serve solo il valore,
         // quindi leggiamo la direzione (WASD -> Vector2) e la rilanciamo come evento.
         MoveEvent?.Invoke(context.ReadValue<Vector2>());
@@ -89,7 +89,7 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// </summary>
     public void OnPrimaryFire(InputAction.CallbackContext context)
     {
-        // [FLUSSO 7b] Qui, a differenza del movimento, ci interessa la FASE dell'input.
+        // Qui, a differenza del movimento, ci interessa la FASE dell'input.
         // context.performed = tasto premuto -> iniziamo a sparare (true).
         if (context.performed)
         {
@@ -108,7 +108,7 @@ public class InputReader : ScriptableObject, IPlayerActions
     /// </summary>
     public void OnAim(InputAction.CallbackContext context)
     {
-        // [FLUSSO 7c] A differenza di Move/Fire, qui NON solleviamo un evento:
+        // A differenza di Move/Fire, qui NON solleviamo un evento:
         // salviamo e basta l'ultima posizione del mouse. Sara' PlayerAim, in LateUpdate,
         // a leggere questo valore e a orientare la torretta di conseguenza.
         AimPosition = context.ReadValue<Vector2>();

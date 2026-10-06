@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
-// [FLUSSO 48] Genera all'avvio un numero fisso di RespawningCoin (FLUSSO 42-43)
-// in punti casuali della mappa e, quando una di esse viene raccolta (FLUSSO 51),
+// Genera all'avvio un numero fisso di RespawningCoin
+// in punti casuali della mappa e, quando una di esse viene raccolta (evento onCollected),
 // la ricolloca e la riabilita invece di distruggerla e ricrearla.
 public class CoinSpawner : NetworkBehaviour
 {
@@ -19,8 +19,8 @@ public class CoinSpawner : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // [FLUSSO 49] Come altri setup autorevoli (es. Health.OnNetworkSpawn,
-        // FLUSSO 39), lo spawn delle monete lo decide solo il server: i client
+        // Come altri setup autorevoli (es. Health.OnNetworkSpawn),
+        // lo spawn delle monete lo decide solo il server: i client
         // le vedranno comparire tramite la normale sincronizzazione dei
         // NetworkObject.
         if (!IsServer) return;
@@ -43,20 +43,20 @@ public class CoinSpawner : NetworkBehaviour
         coinInstance.setValue(coinValue);
         coinInstance.GetComponent<NetworkObject>().Spawn();
 
-        // [FLUSSO 50] Ci iscriviamo all'evento onCollected (dichiarato al FLUSSO 46)
+        // Ci iscriviamo all'evento onCollected (dichiarato in RespawningCoin)
         // di questa specifica istanza, cosi' sapremo quando ricollocarla
-        // (FLUSSO 51-52).
+        // (handleCoinCollected, qui sotto).
         coinInstance.onCollected += handleCoinCollected;
     }
 
     private void handleCoinCollected(RespawningCoin coin)
     {
-        // [FLUSSO 52] Callback collegata al FLUSSO 51: gira solo sul server (e'
+        // Callback collegata a onCollected: gira solo sul server (e'
         // l'unico che riceve l'evento, dato che onCollected viene sollevato
-        // esclusivamente nel ramo server di collect(), FLUSSO 43). Spostiamo la
+        // esclusivamente nel ramo server di RespawningCoin.collect()). Spostiamo la
         // moneta invece di distruggerla: la nuova posizione si propaga ai client
-        // da sola tramite NetworkTransform, dove RespawningCoin.Update (FLUSSO 54)
-        // la riabilita a video. Il Reset() finale (FLUSSO 53) e' cio' che permette
+        // da sola tramite NetworkTransform, dove RespawningCoin.Update
+        // la riabilita a video. Il Reset() finale e' cio' che permette
         // al controllo autorevole in collect() di considerarla di nuovo raccoglibile.
         coin.transform.position = getSpawnPoint();
         coin.Reset();

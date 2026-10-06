@@ -9,7 +9,7 @@ using UnityEngine;
 /// NetworkVariable, sincronizzata automaticamente da Netcode a tutti i client.
 ///
 /// Il valore e' autorevole solo sul server: i client la leggono soltanto (vedi
-/// HealthDisplay, FLUSSO 35-38, che ne ascolta i cambiamenti per aggiornare la
+/// HealthDisplay, che ne ascolta i cambiamenti per aggiornare la
 /// barra vita a schermo).
 /// </summary>
 public class Health : NetworkBehaviour
@@ -23,7 +23,7 @@ public class Health : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // [FLUSSO 39] Solo il server inizializza la vita: e' lui l'unico
+        // Solo il server inizializza la vita: e' lui l'unico
         // autorevole su "quanto vale" la vita di partenza. Se lo facesse anche
         // ogni client, la NetworkVariable riceverebbe scritture concorrenti e non
         // autorizzate (di default scrivibile solo dal server) invece che un
@@ -45,9 +45,9 @@ public class Health : NetworkBehaviour
 
     private void modifyHealth(int value)
     {
-        // [FLUSSO 40] Non c'e' un controllo IsServer qui perche' non serve: il
+        // Non c'e' un controllo IsServer qui perche' non serve: il
         // metodo va chiamato solo da codice che gira gia' sul server (es.
-        // DealDamageOnContact, FLUSSO 34, eseguito esclusivamente li'). Se venisse
+        // DealDamageOnContact, eseguito esclusivamente li'). Se venisse
         // invocato per errore da un client, la scrittura su currentHealth.Value
         // qui sotto verrebbe comunque rifiutata da Netcode (permesso di scrittura
         // server-only di default).
