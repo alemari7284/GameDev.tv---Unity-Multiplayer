@@ -25,22 +25,24 @@ Questo documento è organizzato così:
 8. Checklist mentale da seguire ogni volta che scrivi un componente di rete nuovo (§8)
 9. Glossario (§9)
 
+> 🎮 **Sugli "esempi stupidi"**: in tutto il documento i concetti sono spiegati con paragoni presi da tre giochi — **Metal Gear Solid** (Snake, il Codec, Shadow Moses), **Crash Bandicoot** (casse, frutti Wumpa, Crash Team Racing) e **Rocket League** (macchine, palla, boost, partite private). Non sono precisi al 100% su come quei giochi funzionano davvero dietro le quinte: servono solo a fissare l'idea.
+
 ---
 
 ## 1. Concetti Netcode da sapere prima di leggere il codice
 
 | Concetto | Cos'è | Esempio stupido |
 |---|---|---|
-| **NetworkManager** | Il "regista" della sessione: sa chi è connesso, avvia Host/Server/Client. | È il centralino di un call center: smista le chiamate, ma non parla lui con i clienti. |
-| **NetworkObject** | Componente che rende un GameObject "spawnabile in rete": gli dà un ID univoco condiviso da tutti. | È il codice a barre su un pacco: server e client, guardando lo stesso codice, sanno che stanno parlando dello STESSO pacco. |
-| **NetworkBehaviour** | Un `MonoBehaviour` "consapevole della rete": espone `IsServer`, `IsClient`, `IsOwner`, `OwnerClientId`, `OnNetworkSpawn`/`OnNetworkDespawn`. | È un dipendente che, oltre al suo lavoro normale, sa sempre rispondere a "lavoro qui come capo (server) o come impiegato (client)?". |
-| **NetworkVariable\<T\>** | Variabile che si sincronizza da sola su tutti i client. Di default: scrivibile SOLO dal server, leggibile da tutti. | Una lavagna in classe: il maestro (server) è l'unico che può scriverci sopra, tutti gli alunni (client) la leggono. Se un alunno scrive sul SUO quaderno, la lavagna vera non cambia. |
-| **ServerRpc** | Chiamata di metodo da client → eseguita sul server. | È come compilare una richiesta e imbucarla: tu (client) non esegui l'azione, chiedi che la esegua l'ufficio (server). |
-| **ClientRpc** | Chiamata di metodo da server → eseguita su tutti i client (o su un sottoinsieme). | È un annuncio alla radio: lo trasmette solo l'emittente (server), ma lo sentono tutti gli ascoltatori (client). |
-| **Server authority** | Il server è l'unica fonte di verità: decide se un'azione è valida. | L'arbitro di una partita a carte: un giocatore può *dire* "peschi", ma è l'arbitro a decidere se è il suo turno e a dirlo a tutti. |
-| **Client authority** | Un client specifico ha il permesso di decidere lui stesso un valore (di solito per ridurre la latenza percepita). | Quando scrivi in chat, le lettere appaiono sul TUO schermo all'istante mentre le premi: nessuno aspetta il server per vedersele scrivere da sé. |
-| **Ownership / IsOwner** | Ogni `NetworkObject` ha un proprietario (di solito il client che lo controlla, es. il proprio tank). | Le chiavi di un'auto a noleggio: solo chi le ha in mano può guidarla; gli altri la vedono muoversi ma non la guidano. |
-| **Host** | Un'istanza che è CONTEMPORANEAMENTE server e client (gioca e allo stesso tempo arbitra). | Il tavolo dei giochi in casa tua: tu ospiti gli amici (sei il server) ma giochi anche tu (sei anche client). |
+| **NetworkManager** | Il "regista" della sessione: sa chi è connesso, avvia Host/Server/Client. | È il Colonnello Campbell al Codec in Metal Gear Solid: sa chi è in missione, chi si collega e chi chiude la chiamata, ma non è lui a infilarsi a Shadow Moses. |
+| **NetworkObject** | Componente che rende un GameObject "spawnabile in rete": gli dà un ID univoco condiviso da tutti. | È il numero sopra la macchina in Rocket League: tu vedi "Octane #3", il tuo amico pure, e tutti e due sanno che è LA STESSA macchina, anche se ognuno la vede sul proprio schermo. |
+| **NetworkBehaviour** | Un `MonoBehaviour` "consapevole della rete": espone `IsServer`, `IsClient`, `IsOwner`, `OwnerClientId`, `OnNetworkSpawn`/`OnNetworkDespawn`. | È Snake con il Codec sempre in tasca: oltre a fare il suo lavoro (strisciare, nascondersi nella scatola di cartone), sa sempre rispondere a "sono io a dirigere la missione (server) o sto eseguendo ordini (client)? E questo corpo è il MIO (owner)?". |
+| **NetworkVariable\<T\>** | Variabile che si sincronizza da sola su tutti i client. Di default: scrivibile SOLO dal server, leggibile da tutti. | Il tabellone del punteggio di Rocket League: lo aggiorna solo il server quando la palla entra in porta, e tutti lo vedono cambiare. Se attacchi un post-it con scritto "5-0" sul TUO monitor, il tabellone vero resta 0-3. |
+| **ServerRpc** | Chiamata di metodo da client → eseguita sul server. | Snake che chiama Otacon al Codec: "apri questa porta!". Non è Snake ad aprirla: lui chiede, e la porta la apre chi ha davvero accesso al sistema (server). |
+| **ClientRpc** | Chiamata di metodo da server → eseguita su tutti i client (o su un sottoinsieme). | L'allarme di Shadow Moses: lo fa scattare solo la base (server), ma tutte le guardie (client) lo sentono nello stesso momento e gli compare il "**!**" sopra la testa. |
+| **Server authority** | Il server è l'unica fonte di verità: decide se un'azione è valida. | Il goal in Rocket League: puoi giurare di aver toccato la palla per ultimo, ma se il server dice che il goal l'ha segnato l'avversario, il goal è dell'avversario. Punto. |
+| **Client authority** | Un client specifico ha il permesso di decidere lui stesso un valore (di solito per ridurre la latenza percepita). | Quando sterzi in Rocket League la TUA macchina gira subito sul tuo schermo, senza aspettare il server: se dovessi aspettare il giro di rete per ogni sterzata, un aerial sarebbe impossibile. |
+| **Ownership / IsOwner** | Ogni `NetworkObject` ha un proprietario (di solito il client che lo controlla, es. il proprio tank). | In un 2v2 di Rocket League ognuno controlla solo la propria macchina: vedi quella del compagno muoversi, ma il pad di quella macchina ce l'ha in mano lui, non tu. |
+| **Host** | Un'istanza che è CONTEMPORANEAMENTE server e client (gioca e allo stesso tempo arbitra). | Sei tu che crei la partita privata di Rocket League E ci giochi dentro: fai da arbitro (server) e intanto guidi la tua macchina (client). |
 
 **Regola d'oro che attraversa tutto il progetto**: *"il client mostra, il server decide"*. Ogni volta che vedrai un client fare qualcosa visivamente in anticipo (nascondere una moneta, mostrare un proiettile finto), sappi che è solo estetica: la verità arriverà comunque dal server.
 
@@ -50,7 +52,7 @@ Questo documento è organizzato così:
 
 Questo è il **vero** primo codice eseguito all'avvio del gioco, prima ancora della scena con `ConnectionButtons` (§3): vive nella scena `NetBootstrap`, caricata per prima. Il suo scopo è distinguere un dedicated server da un giocatore normale e, nel secondo caso, autenticare il giocatore presso **Unity Gaming Services (UGS)** prima di lasciarlo entrare nel menu, per poi aprire/entrare in una partita.
 
-> **Esempio stupido**: è come il controllo documenti all'ingresso di un evento, PRIMA della sala principale (il menu/la partita vera). Se sei un membro dello staff (dedicated server) passi da un'altra porta; se sei un ospite (giocatore) devi prima farti timbrare il biglietto (autenticazione anonima) — solo dopo ti aprono la porta della sala.
+> **Esempio stupido**: è l'inizio di Metal Gear Solid. Prima di arrivare nella base (il menu/la partita vera), Snake passa dal molo e deve farsi riconoscere al Codec dal Colonnello (autenticazione anonima): solo dopo si apre l'ascensore. Il personale della base (dedicated server) invece entra dall'ingresso di servizio, senza Codec e senza schermo.
 
 **File coinvolti**:
 - `Assets/Scripts/Networking/ApplicationController.cs` — punto di ingresso, decide dedicated server vs client.
@@ -365,7 +367,9 @@ public class HostGameManager
         {
             var options = new SessionOptions
             {
-                MaxPlayers = maxConnections
+                Name = "My Lobby",
+                MaxPlayers = maxConnections,
+                IsPrivate = false
             }.WithRelayNetwork();
 
             session = await MultiplayerService.Instance.CreateSessionAsync(options);
@@ -384,6 +388,7 @@ public class HostGameManager
 ```
 
 - `CreateSessionAsync(options)` con `.WithRelayNetwork()` fa, **in un'unica chiamata**, tutto quello che nel corso richiedeva quattro passi separati (alloca il Relay, genera il join code, configura `UnityTransport`, avvia `NetworkManager.StartHost()`): vedi §2.6 per il confronto riga per riga con il codice del corso.
+- La stessa chiamata crea anche la **Lobby**: `Name` è il nome con cui la partita comparirà nella lista lobby, `IsPrivate = false` la rende visibile nelle ricerche pubbliche. Nessuna chiamata separata a `CreateLobbyAsync`, nessun heartbeat: vedi §2.6.7.
 - `session.Code` è il join code umano-leggibile, generato automaticamente da Unity — per ora solo loggato in console, non ancora mostrato in UI (stesso limite del corso: non esiste ancora un pannello che lo mostri al giocatore).
 - Solo dopo che la sessione è stata creata (e quindi `NetworkManager` è già avviato come Host) si cambia scena con `NetworkManager.Singleton.SceneManager.LoadScene(...)` — la versione "di rete" del cambio scena (diversa da `SceneManager.LoadScene` usato in `ClientGameManager.goToMenu`), l'unica che porta con sé anche tutti i client già connessi.
 
@@ -396,8 +401,10 @@ HostSingleton.Instance.GameManager.StartHostAsync()
       |
       v
 MultiplayerService.Instance.CreateSessionAsync(
-    new SessionOptions{ MaxPlayers = 20 }.WithRelayNetwork()
+    new SessionOptions{ Name = "My Lobby", MaxPlayers = 20, IsPrivate = false }
+        .WithRelayNetwork()
 )  ------------------------------------> [Unity Multiplayer Services]
+      |  crea la Lobby (e la tiene viva con l'heartbeat),
       |  alloca il Relay, genera il join code,
       |  configura UnityTransport, avvia NetworkManager.StartHost()
       |  TUTTO IN UNA CHIAMATA
@@ -408,7 +415,7 @@ session.Code  --------------------------> join code (per ora solo loggato)
 NetworkManager.Singleton.SceneManager.LoadScene("Game")   <- tutti i client connessi seguono
 ```
 
-> **Esempio stupido**: nel corso, aprire una partita era come prenotare un tavolo al ristorante chiamando prima il centralino (Relay), poi comunicando tu stesso al cameriere (`UnityTransport`) il numero di prenotazione, e solo alla fine sedendoti davvero al tavolo (`StartHost()`). Con le Sessions, è come dire semplicemente "un tavolo per 20, grazie": è il ristorante (Unity Multiplayer Services) a occuparsi da solo di centralino, cameriere e sistemazione del tavolo.
+> **Esempio stupido**: nel corso, aprire una partita era come un livello di Crash Bandicoot fatto tutto a mano: rompi la cassa per prendere la maschera Aku Aku (allocazione Relay), raccogli la gemma (join code), la porti tu stesso al warp (`UnityTransport`), e solo alla fine salti nel portale (`StartHost()`). Con le Sessions è come premere "Crea partita privata" in Rocket League: scegli nome e numero di giocatori, e il gioco si occupa da solo di server, codice e connessione.
 
 **Cosa manca ancora**: mostrare `session.Code` a schermo (oggi solo loggato), e gestire `LeaveAsync()`/la disconnessione quando l'utente esce dalla partita.
 
@@ -423,7 +430,7 @@ Il corso costruisce l'intero multiplayer chiamando **direttamente** tre servizi 
 | Servizio | Pacchetto (usato dal corso) | A cosa serve nel corso |
 |---|---|---|
 | **Relay** | `com.unity.services.relay` | Far comunicare host e client senza IP pubblico/port forwarding (`Relay.Instance.CreateAllocationAsync`, `.GetJoinCodeAsync`, `.JoinAllocationAsync`) |
-| **Lobby** | `com.unity.services.lobby` | (non ancora usato in questo punto del corso, ma parte della stessa famiglia di servizi) |
+| **Lobby** | `com.unity.services.lobby` | Elenco di partite pubbliche a cui unirsi (`Lobbies.Instance.CreateLobbyAsync`, `SendHeartbeatPingAsync`, `QueryLobbiesAsync`): introdotto più avanti nel corso, la traduzione è in §2.6.7 |
 | **Matchmaker** | `com.unity.services.matchmaker` | (idem) |
 | **Multiplay** | `com.unity.services.multiplay` | (idem, per dedicated server hosting) |
 
@@ -626,18 +633,129 @@ Per chiarezza, un elenco esplicito di ciò che la migrazione **non** ha toccato,
 | Elemento | Namespace | A cosa serve |
 |---|---|---|
 | `MultiplayerService.Instance` | `Unity.Services.Multiplayer` | Punto di ingresso singleton per creare/joinare sessioni (equivalente concettuale di `Relay.Instance` nel corso) |
-| `SessionOptions` | `Unity.Services.Multiplayer` | Configurazione di una sessione da creare: `MaxPlayers`, e i metodi di estensione `.WithRelayNetwork(...)` / `.WithDistributedAuthorityNetwork(...)` per scegliere come si connetteranno host e client |
+| `SessionOptions` | `Unity.Services.Multiplayer` | Configurazione di una sessione da creare: `Name` (nome nella lista lobby), `MaxPlayers`, `IsPrivate` (visibile o no nelle ricerche), e i metodi di estensione `.WithRelayNetwork(...)` / `.WithDistributedAuthorityNetwork(...)` per scegliere come si connetteranno host e client |
 | `CreateSessionAsync(options)` | `MultiplayerService.Instance` | Crea una sessione come host: alloca il Relay, genera il join code, e (con `.WithRelayNetwork()` semplice) avvia da sola `NetworkManager` come Host |
 | `JoinSessionByCodeAsync(joinCode)` | `MultiplayerService.Instance` | Entra in una sessione esistente come client, usando il join code: avvia da sola `NetworkManager` come Client |
 | `ISession` | `Unity.Services.Multiplayer` | Rappresenta la sessione attiva (sia per l'host che per i client): espone `Code` (join code), `Id`, `Host`, `IsHost`, `PlayerCount`, `MaxPlayers`, `CurrentPlayer`, e il metodo `LeaveAsync()` |
+| `QuerySessionsAsync(options)` | `MultiplayerService.Instance` | Cerca le sessioni pubbliche (= le lobby) a cui unirsi; restituisce una lista di `ISessionInfo` (`Id`, `Name`, `AvailableSlots`, `MaxPlayers`…). Sostituisce `QueryLobbiesAsync` del corso |
+| `JoinSessionByIdAsync(sessionId)` | `MultiplayerService.Instance` | Entra in una sessione scelta da una lista (invece che digitando il codice). Sostituisce `JoinLobbyByIdAsync` + lettura del join code + `StartClient` del corso |
 | `session.LeaveAsync()` | `ISession` | Lascia la sessione: rimuove il giocatore dal backend e chiude in autonomia i moduli di rete associati (non serve chiamare `NetworkManager.Singleton.Shutdown()` a mano) |
 
-#### 2.6.7 Cosa manca ancora rispetto a un flusso completo
+#### 2.6.7 Lobby: la Session È già una Lobby
+
+Più avanti il corso aggiunge le **Lobby**, cioè la lista di partite pubbliche a cui unirsi senza dover digitare il codice. Nel corso è un secondo servizio, chiamato a mano **dopo** aver creato il Relay. Nel Multiplayer Services SDK la Lobby è **inglobata nella Session**: `CreateSessionAsync` la crea già da sola. Per questo `HostGameManager` non ha un secondo blocco `try/catch` per la Lobby.
+
+**Prima** (come da corso, aggiunto in fondo a `StartHostAsync`, dopo il Relay):
+```csharp
+using Unity.Services.Lobbies;
+using Unity.Services.Lobbies.Models;
+
+private string lobbyId;
+
+// ...dentro StartHostAsync, dopo aver ottenuto joinCode dal Relay:
+try
+{
+    CreateLobbyOptions lobbyOptions = new CreateLobbyOptions();
+    lobbyOptions.IsPrivate = false;
+    lobbyOptions.Data = new Dictionary<string, DataObject>()
+    {
+        {
+            "JoinCode", new DataObject(
+                visibility: DataObject.VisibilityOptions.Member,
+                value: joinCode
+            )
+        }
+    };
+    Lobby lobby = await Lobbies.Instance.CreateLobbyAsync("My Lobby", maxConnections, lobbyOptions);
+    lobbyId = lobby.Id;
+    HostSingleton.Instance.StartCoroutine(HeartbeatLobby(15));
+}
+catch (LobbyServiceException e)
+{
+    Debug.Log(e);
+    return;
+}
+
+private IEnumerator HeartbeatLobby(float waitTimeSeconds)
+{
+    WaitForSecondsRealtime delay = new WaitForSecondsRealtime(waitTimeSeconds);
+    while (true)
+    {
+        Lobbies.Instance.SendHeartbeatPingAsync(lobbyId);
+        yield return delay;
+    }
+}
+```
+
+**Dopo** (in questo progetto): solo due proprietà in più nelle `SessionOptions` che c'erano già:
+```csharp
+var options = new SessionOptions
+{
+    Name = "My Lobby",          // nome nella lista lobby
+    MaxPlayers = maxConnections,
+    IsPrivate = false           // visibile in QuerySessionsAsync
+}.WithRelayNetwork();
+```
+
+| Pezzo del corso | Cosa diventa con le Sessions | Perché |
+|---|---|---|
+| `Lobbies.Instance.CreateLobbyAsync(name, max, options)` | `Name` + `MaxPlayers` + `IsPrivate` dentro `SessionOptions` | `CreateSessionAsync` crea la Lobby da sé. Chiamarla anche a mano creerebbe **due** lobby per ogni partita |
+| `lobbyOptions.Data["JoinCode"]` | Sparito | L'SDK salva da solo il join code del Relay dentro la Lobby e lo usa quando un client entra |
+| Campo `lobbyId` | `session.Id` | La Session e la sua Lobby sono la stessa cosa, con lo stesso id |
+| Coroutine `HeartbeatLobby(15)` avviata su `HostSingleton` | Sparita | L'SDK manda l'heartbeat automaticamente finché la sessione è viva |
+| `catch (LobbyServiceException e)` | Il `catch (Exception e)` già esistente | Un'unica chiamata, un unico `try/catch`: gli errori di Lobby e Relay arrivano entrambi come `SessionException` |
+| `using Unity.Services.Lobbies(.Models)` | Rimossi | Il pacchetto `com.unity.services.lobby` non è installato (e non può coesistere con `com.unity.services.multiplayer`, §2.6.1) |
+
+> **Esempio stupido — l'heartbeat**: in Metal Gear Solid, se Snake smette di rispondere al Codec, dall'altra parte senti "Snake? Snake?! SNAAAAAKE!" e la missione finisce. La Lobby funziona uguale: se l'host non manda un "sono ancora qui" ogni tanto, Unity la considera morta e la chiude. Nel corso eri tu a dover rispondere al Codec ogni 15 secondi (la coroutine); con le Sessions il Codec risponde da solo.
+
+> **Esempio stupido — `IsPrivate`**: una lobby pubblica è come una partita personalizzata di Rocket League che compare nella lista del server browser: chiunque la vede e ci entra. Una lobby privata (`IsPrivate = true`) è come la frequenza Codec di Meryl in MGS1 (140.15): non compare da nessuna parte, la conosce solo chi l'ha letta sul retro della custodia del CD, cioè chi ha ricevuto `session.Code`.
+
+**Lato client (prossime lezioni)**: la lista lobby del corso (`QueryLobbiesAsync`, `LobbyItem`, `JoinLobbyByIdAsync` seguito dalla lettura di `Data["JoinCode"]` e da `StartClient`) si traduce così:
+```csharp
+// Lista lobby: ogni ISessionInfo ha Id, Name, AvailableSlots, MaxPlayers...
+QuerySessionsResults results = await MultiplayerService.Instance.QuerySessionsAsync(
+    new QuerySessionsOptions { Count = 25 });
+
+foreach (ISessionInfo info in results.Sessions)
+{
+    // un LobbyItem per ogni info (nel corso riceveva un Lobby)
+}
+
+// Entrare in una lobby scelta dalla lista: fa anche il join Relay e avvia il Client
+session = await MultiplayerService.Instance.JoinSessionByIdAsync(info.Id);
+```
+
+> **Esempio stupido — la lista lobby**: è la schermata di selezione livello di Crash Bandicoot, ma per le partite: vedi tutti i "portali" aperti, con quanti posti liberi ha ciascuno (`AvailableSlots`), e saltandoci dentro (`JoinSessionByIdAsync`) ti ritrovi direttamente nel livello, senza dover digitare nessun codice.
+
+**Come adattiamo il codice del corso**: il codice copiato dalle lezioni viene marcato con un commento `// from udemy`; poi viene riscritto per le Sessions, il marker viene rimosso e le parti inutili (come l'heartbeat) vengono eliminate, con un commento che spiega a cosa corrispondono nel corso.
+
+#### 2.6.8 Cosa manca ancora rispetto a un flusso completo
 
 - Mostrare `session.Code` in una UI (oggi è solo loggato in console).
-- Un bottone/flusso per lasciare la sessione (`session.LeaveAsync()`, non ancora richiamato da nessuna parte).
+- La **lista lobby lato client** (`QuerySessionsAsync` + `JoinSessionByIdAsync`, vedi §2.6.7): il lato host è pronto (la sessione è già pubblica e ha un nome), manca la UI che la mostra e il metodo di join in `ClientGameManager`.
+- Un nome di lobby vero: oggi è fisso a `"My Lobby"` per tutte le partite.
+- Un bottone/flusso per lasciare la sessione (`session.LeaveAsync()`, non ancora richiamato da nessuna parte). Per l'host, chiudere la sessione chiude anche la Lobby: non c'è un `DeleteLobbyAsync` separato da chiamare.
 - Gestione più ricca degli errori: la documentazione Unity consiglia di intercettare in modo specifico `SessionException` (sottoclasse di `Exception`) per distinguere gli errori delle Sessions da altri errori generici — oggi il codice cattura solo `Exception` generico, coerente con lo stile "minimale" tenuto finora dal corso.
-- Se il corso introdurrà più avanti Lobby (liste partite, matchmaking) o Matchmaker, andranno anch'essi tradotti nelle rispettive API delle Sessions (`MultiplayerService.Instance` espone anche funzionalità di ricerca/lista sessioni), non nei pacchetti standalone ormai deprecati.
+- Se il corso introdurrà più avanti il Matchmaker, andrà anch'esso tradotto nelle API delle Sessions (`MultiplayerService.Instance.MatchmakeSessionAsync`), non nel pacchetto standalone ormai deprecato.
+
+#### 2.6.9 Dove vedere i dati scambiati con Unity Gaming Services
+
+Tutto quello che le Sessions creano dietro le quinte (Lobby, Relay, giocatori autenticati) si vede sulla **Unity Cloud Dashboard**: <https://cloud.unity.com>.
+
+1. Apri il progetto collegato al gioco (lo stesso indicato in *Edit → Project Settings → Services* nell'Editor).
+2. Controlla in alto di essere nell'ambiente **production**, quello di default.
+3. Dal menu dei prodotti:
+   - **Lobby**: le lobby attive, con nome (`Name`), giocatori, capienza (`MaxPlayers`) e dati. Qui comparirà "My Lobby".
+   - **Relay**: allocazioni e statistiche di utilizzo (connessioni, traffico).
+   - **Player Management / Authentication**: i giocatori autenticati in modo anonimo da `AuthenticationWrapper` (§2.3). Ogni istanza del gioco è un giocatore diverso.
+
+I nomi delle voci nel menu cambiano spesso; se non le trovi, usa la ricerca prodotti della dashboard.
+
+- **Le lobby si vedono solo mentre la partita è in corso**: quando l'host esce o si ferma il Play Mode, la sessione viene chiusa e la lobby sparisce dopo poco. Tieni il gioco in Play mentre guardi la dashboard.
+- **I grafici di utilizzo non sono in tempo reale**: possono arrivare con qualche minuto di ritardo.
+- **Il traffico Netcode** tra host e client (RPC, `NetworkVariable`) non passa dalla dashboard: per quello serve il pacchetto **Multiplayer Tools** (`com.unity.multiplayer.tools`), che aggiunge al Profiler di Unity i moduli di rete e un overlay con le statistiche runtime.
+
+> **Esempio stupido**: la dashboard è il radar Soliton di Metal Gear Solid: vedi chi c'è nella base (lobby attive, giocatori collegati) mentre sei in missione. Ma se esci dalla missione (stop del Play Mode), la base viene sgomberata e il radar resta vuoto. E il radar non ti dice cosa si stanno dicendo le guardie tra loro (il traffico Netcode): per quello serve un altro strumento, la radio intercettata (Multiplayer Tools).
 
 ---
 
@@ -650,7 +768,7 @@ Componente da mettere su un `Canvas` con due bottoni UI:
 - **Host** → `NetworkManager.Singleton.StartHost()`: questa istanza fa contemporaneamente da server e da client (gioca e allo stesso tempo comanda la partita).
 - **Join** → `NetworkManager.Singleton.StartClient()`: questa istanza si collega a un Host già avviato.
 
-> **Esempio stupido**: per testare in locale, avvii due istanze del gioco (due finestre Editor/Build): una preme "Host" (apre la partita), l'altra preme "Join" (si siede al tavolo). Se ne avvii una terza e preme "Join", si aggiunge un terzo giocatore allo stesso tavolo.
+> **Esempio stupido**: è lo split-screen di Crash Team Racing sulla stessa PlayStation: niente internet, tutti sulla stessa macchina. Avvii due istanze del gioco (due finestre Editor/Build): una preme "Host" (accende la console e sceglie la pista), l'altra preme "Join" (attacca il secondo pad). Una terza istanza che preme "Join" è il terzo pad: un altro kart sulla stessa pista.
 
 Non c'è validazione, IP hardcoded o matchmaking: è la versione minima per testare la sincronizzazione in locale.
 
@@ -669,7 +787,7 @@ Il `NetworkTransform` di Netcode, di default, è **server-authoritative**: solo 
 
 `ClientNetworkTransform` capovolge la regola **solo per il movimento del proprio tank**: il proprietario (owner) scrive direttamente il proprio transform, il server lo riceve e lo ridistribuisce agli altri. Risultato: zero input-lag per chi guida, in cambio di una vulnerabilità accettabile (un client scorretto potrebbe teleportarsi).
 
-> **Esempio stupido**: è la differenza tra scrivere su una lavagna condivisa passando sempre per il preside (server-authoritative, lento ma sicuro) e avere il permesso di scrivere direttamente sul TUO angolo di lavagna (client-authoritative, veloce, ma se sei disonesto puoi scrivere cose false).
+> **Esempio stupido**: immagina Rocket League server-authoritative puro: tocchi lo stick, aspetti che il server ti risponda "ok, ora sei qui", e solo allora la macchina si muove. Sembra di guidare sul burro (lento ma sicuro). Con `ClientNetworkTransform` la TUA macchina si muove subito sul tuo schermo e il server si limita a inoltrare la posizione agli altri (veloce, ma un cheater potrebbe dire "sono in porta avversaria" e teletrasportarsi lì).
 
 ### Il meccanismo, passo per passo (FLUSSO 0→8, numerazione locale al file)
 
@@ -707,7 +825,7 @@ Da qui in poi seguiamo la numerazione **globale** del gameplay: dal momento in c
 
 File: `Assets/Scripts/Input/InputReader.cs` — è uno **ScriptableObject**, non un componente su un GameObject: è un asset condiviso che chiunque può referenziare (movimento, mira, sparo) senza dover ognuno gestire da sé l'Input System.
 
-> **Esempio stupido**: `InputReader` è il telecomando universale di casa. Preme un tasto una volta sola, e chiunque sia "sintonizzato" (PlayerMovement, PlayerAiming, ProjectileLauncher) riceve il segnale, senza che il telecomando sappia o si preoccupi di chi lo sta ascoltando.
+> **Esempio stupido**: `InputReader` è il Codec di Metal Gear Solid. Trasmette su una frequenza (`MoveEvent`, `PrimaryFireEvent`), e chiunque sia sintonizzato (PlayerMovement, ProjectileLauncher) riceve il messaggio, senza che il Codec sappia o si preoccupi di chi sta ascoltando. Se domani Snake cambia Codec (gamepad invece di tastiera), Otacon e Campbell non se ne accorgono nemmeno.
 
 | FLUSSO | Cosa succede |
 |---|---|
@@ -736,7 +854,7 @@ File: `Assets/Scripts/Core/Player/PlayerAiming.cs`
 | **12** | Si converte in coordinate **mondo** con `Camera.main.ScreenToWorldPoint`, per poterla confrontare con la posizione della torretta nella scena. |
 | **13** | `turretTransform.up = aimWorldPos - (Vector2)turretTransform.position;` — si orienta l'asse "alto" della torretta (dove punta lo sprite del cannone) verso il mouse. |
 
-> **Esempio stupido**: è come un girasole che gira sempre verso il sole (il mouse). Non importa dove sia il resto della pianta (il corpo del tank): la testa (la torretta) trova sempre il modo di puntare nella direzione giusta.
+> **Esempio stupido**: è la telecamera di sorveglianza di Shadow Moses che segue Snake. Il muro su cui è montata (il corpo del tank) può essere girato in qualsiasi modo, ma la telecamera (la torretta) ruota sempre verso il suo bersaglio (il mouse). E ruota DOPO che il muro si è sistemato (`LateUpdate`), altrimenti guarderebbe dove Snake era un frame fa.
 
 ### 5.3 Sparo — `ProjectileLauncher.cs` (FLUSSO 14 → 21, + 29)
 
@@ -747,7 +865,7 @@ Qui si vede il pattern più importante del progetto: **due proiettili per ogni s
 - `serverProjectilePrefab` → il proiettile **vero**, istanziato SOLO sul server, autorevole, infligge danno reale.
 - `clientProjectilePrefab` → un proiettile **dummy**, solo visivo, mostrato subito in locale per dare feedback istantaneo senza aspettare il giro di rete.
 
-> **Esempio stupido**: un attore che finge di sparare a salve per l'effetto scenico immediato (il dummy, che vedi subito), mentre il "colpo vero" viene autorizzato ed eseguito dal regista dietro le quinte (il server) un attimo dopo.
+> **Esempio stupido**: la palla di Rocket League. Quando la colpisci, sul TUO schermo parte subito (previsione locale = il dummy), senza aspettare nessuno. Ma la traiettoria vera la decide il server, ed è quella che conta per il goal. Per questo a volte, con un ping alto, vedi la palla "scattare" di colpo in un'altra posizione: è il momento in cui la versione vera corregge quella finta.
 
 | FLUSSO | Cosa succede |
 |---|---|
@@ -777,7 +895,7 @@ File: `Assets/Scripts/Utils/DestroySelfOnContact.cs`, `Assets/Scripts/Utils/Life
 - **FLUSSO 22**: il proiettile vero (generato dal server) si autodistrugge al primo contatto. Essendo il server ad averlo istanziato, la distruzione è autorevole e si propaga a tutti.
 - **FLUSSO 23**: `Lifetime` è una rete di sicurezza indipendente, su entrambi i tipi di proiettile (vero e dummy): se non colpiscono nulla entro N secondi, si autodistruggono comunque.
 
-> **Esempio stupido**: un palloncino che scoppia se tocca uno spillo (FLUSSO 22), ma che comunque si sgonfia da solo dopo un minuto anche se non tocca niente (FLUSSO 23) — così non resta a fluttuare in scena per sempre, sprecando memoria.
+> **Esempio stupido**: le casse TNT di Crash Bandicoot. Esplodono se le tocchi (FLUSSO 22), ma partono anche da sole con il conto alla rovescia "3… 2… 1…" anche se non succede niente (FLUSSO 23) — così nessuna cassa resta nel livello per sempre a occupare memoria.
 
 ### 5.5 Movimento del corpo — `PlayerMovement.cs` (FLUSSO 24 → 28)
 
@@ -792,7 +910,7 @@ File: `Assets/Scripts/Core/Player/PlayerMovement.cs`
 | **27** | In `FixedUpdate()` (fisica, intervallo fisso): `rb.velocity = bodyTransform.up * input.y * movementSpeed`. Si usa `bodyTransform.up` e non gli assi del mondo, così il tank avanza sempre "in avanti" rispetto a come è ruotato in quel momento. |
 | **28** | `handleMove` — callback collegata al FLUSSO 24: aggiorna solo `previousMovementInput`, che 26 e 27 leggono ogni frame. |
 
-> **Esempio stupido**: sterzare un'auto. Giri il volante (Update, ad ogni frame, effetto visivo immediato) e intanto l'auto avanza nella fisica del motore (FixedUpdate) sempre nella direzione in cui è puntato il muso — non magicamente verso nord.
+> **Esempio stupido**: il kart di Crash Team Racing. Sterzi (Update, ogni frame, effetto immediato) e intanto il motore spinge (FixedUpdate, fisica) sempre nella direzione in cui punta il muso del kart — non magicamente verso nord, qualunque sia la curva.
 
 ### 5.6 Danno da contatto — `DealDamageOnContact.cs` (FLUSSO 29 → 34)
 
@@ -806,7 +924,7 @@ File: `Assets/Scripts/Core/Combat/DealDamageOnContact.cs` — presente **solo** 
 | **33** | Se il bersaglio ha un `NetworkObject` il cui `OwnerClientId` coincide con chi ha sparato, si esce: **non ci si può ferire da soli**. |
 | **34** | Se il bersaglio ha un componente `Health`, gli si infligge danno. |
 
-> **Esempio stupido**: appena esce dalla canna, un proiettile non può tornare indietro e colpire chi l'ha sparato — sarebbe come un boomerang impazzito che ferisce il lanciatore, che nessun gioco vorrebbe.
+> **Esempio stupido**: il missile di Crash Team Racing. Appena lanciato, ti passa attraverso senza farti nulla: sa chi l'ha sparato (`OwnerClientId`) e ignora il proprio kart. Senza questo controllo, ogni missile esploderebbe in faccia a chi lo lancia nell'istante stesso in cui esce.
 
 ### 5.7 Vita e barra vita — `Health.cs` + `HealthDisplay.cs` (FLUSSO 35 → 40)
 
@@ -823,7 +941,7 @@ File: `Assets/Scripts/Core/Combat/Health.cs`, `Assets/Scripts/Core/Combat/Health
 | **39** | `Health.OnNetworkSpawn` — solo il server inizializza `currentHealth.Value = MaxHealth`. Se lo facesse anche ogni client, ci sarebbero scritture concorrenti non autorizzate. |
 | **40** | `modifyHealth` — nessun controllo `IsServer` esplicito: il metodo va chiamato solo da codice già server-side (es. `DealDamageOnContact`, FLUSSO 34). Anche se venisse chiamato per errore da un client, Netcode rifiuterebbe comunque la scrittura sulla `NetworkVariable`. |
 
-> **Esempio stupido**: l'indicatore di carburante in macchina. Solo il benzinaio (server) può davvero cambiare quanto carburante c'è nel serbatoio; la lancetta sul cruscotto (HealthDisplay) si limita a MOSTRARE il livello vero, non può decidere lei quanta benzina c'è.
+> **Esempio stupido**: la barra LIFE di Snake in alto a sinistra in Metal Gear Solid. Si limita a MOSTRARE quanta vita hai (HealthDisplay). È il gioco (server) a decidere quanta vita ti toglie il proiettile di una guardia (Health). Colorare di verde la barra con Paint non ti cura.
 
 ### 5.8 Sistema monete — `Coin.cs`, `CoinWallet.cs`, `RespawningCoin.cs`, `CoinSpawner.cs` (FLUSSO 41 → 54)
 
@@ -877,7 +995,7 @@ CoinSpawner (server)                RespawningCoin                     CoinWalle
       |                                   |  showCoin(true) — la fa ricomparire|
 ```
 
-> **Esempio stupido**: un gettone da sala giochi. Lo infili in una macchina e SPARISCE SUBITO ai tuoi occhi (feedback client immediato, FLUSSO 42) — non stai lì a fissare un gettone già usato. Solo il gestore della sala (server) sa davvero se il gettone era valido, lo conta nel cassetto (FLUSSO 44) e decide di farne ricomparire uno identico in un'altra macchina della sala (FLUSSO 52-54), senza doverne stampare uno nuovo da zero.
+> **Esempio stupido**: i frutti Wumpa di Crash Bandicoot, in una versione multiplayer. Ci passi sopra e il frutto sparisce SUBITO dal tuo schermo con il suo "pop" (feedback client immediato, FLUSSO 42). Ma il contatore dei Wumpa lo aggiorna solo il server (FLUSSO 44). Se tu e un altro giocatore ci passate sopra nello stesso istante, il server ne dà uno solo (FLUSSO 43). Poi, invece di distruggere il frutto e crearne uno nuovo, il server lo teletrasporta in un altro punto del livello (FLUSSO 52-54).
 
 ### 5.9 Costo in monete per sparare, e polvere sui proiettili distrutti — `ProjectileLauncher.cs`, `CoinWallet.cs`, `SpawnOnDestroy.cs` (FLUSSO 55 → 59)
 
@@ -898,7 +1016,7 @@ Prima esistevano solo le monete come *punteggio*; ora sparare **costa** monete, 
 | **58** | `ProjectileLauncher.PrimaryFireServerRpc` | Controllo *autorevole* lato server: ripete la stessa verifica (perché il controllo client, FLUSSO 57b, è solo un'ottimizzazione aggirabile) e, solo se le monete bastano davvero, procede e scala il costo. |
 | **59** | `CoinWallet.spendCoins` | Sottrae `costToFire` da `totalCoins`, la stessa `NetworkVariable` accreditata da `OnTriggerEnter2D` al FLUSSO 44. Chiamato solo dal server. |
 
-> **Esempio stupido**: come pagare un biglietto del bus convalidandolo alla macchinetta. Tu vedi il gesto (client, FLUSSO 57b: "ho abbastanza soldi? provo a salire"), ma è la macchinetta (server, FLUSSO 58) a controllare davvero il credito e a scalarlo (FLUSSO 59) — se provi a salire senza credito, il gesto non ha alcun effetto.
+> **Esempio stupido**: il boost di Rocket League. Le monete sono i cuscinetti di boost che raccogli sul campo, e sparare è premere il tasto boost. Il tuo gioco controlla per primo "ho ancora boost nella barra?" e, se è vuota, non prova neanche (client, FLUSSO 57b). Ma è il server a controllare davvero quanto boost hai e a scalarlo (FLUSSO 58-59): se modifichi il gioco per avere boost infinito, il server ti risponde comunque "barra vuota".
 
 ---
 
@@ -1126,7 +1244,12 @@ using Unity.Services.Multiplayer;
 
 public async Task<string> StartHostAsync(int maxConnections)
 {
-    var options = new SessionOptions { MaxPlayers = maxConnections }.WithRelayNetwork();
+    var options = new SessionOptions
+    {
+        Name = "My Lobby",        // la Session e' anche una Lobby: questo e' il nome in lista
+        MaxPlayers = maxConnections,
+        IsPrivate = false         // true = raggiungibile solo con il codice
+    }.WithRelayNetwork();
     ISession session = await MultiplayerService.Instance.CreateSessionAsync(options);
     // session.Code e' gia' il join code: mostralo all'utente, cosi' possa condividerlo.
     // NetworkManager e' gia' avviato come Host: nessuna configurazione manuale del transport.
@@ -1138,7 +1261,20 @@ public async Task JoinAsClientAsync(string joinCode)
     ISession session = await MultiplayerService.Instance.JoinSessionByCodeAsync(joinCode);
     // NetworkManager e' gia' avviato come Client: nessuna configurazione manuale del transport.
 }
+
+public async Task JoinFromListAsync()
+{
+    // Lista lobby pubbliche, poi join della prima con posti liberi (vedi §2.6.7)
+    QuerySessionsResults results = await MultiplayerService.Instance.QuerySessionsAsync(new QuerySessionsOptions());
+    ISessionInfo first = results.Sessions.FirstOrDefault(s => s.AvailableSlots > 0);
+    if (first != null)
+    {
+        await MultiplayerService.Instance.JoinSessionByIdAsync(first.Id);
+    }
+}
 ```
+
+> **Esempio stupido**: due modi per entrare nella partita di un amico in Rocket League. Ti manda nome e password della partita privata (`JoinSessionByCodeAsync`), oppure la cerchi tu nella lista delle partite pubbliche (`QuerySessionsAsync` + `JoinSessionByIdAsync`). In entrambi i casi, una volta dentro, la connessione la gestisce il gioco.
 
 > ⚠️ **Nota storica**: fino a gennaio 2026 questo pattern si scriveva chiamando `Relay.Instance.CreateAllocationAsync`/`GetJoinCodeAsync`/`JoinAllocationAsync` e configurando a mano `UnityTransport.SetRelayServerData` prima di `NetworkManager.Singleton.StartHost()`/`StartClient()` (è quello che mostra ancora il corso). Da settembre 2026 `com.unity.services.relay` standalone è deprecato: usa `com.unity.services.multiplayer` e le Sessions come sopra. Il dettaglio completo, con il codice vecchio a confronto riga per riga, è in §2.6.
 
@@ -1180,8 +1316,11 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
 - **Relay**: servizio Unity che fa da "postino neutrale" tra host e client, senza bisogno di IP pubblici o port forwarding. Nel corso si chiama direttamente (`com.unity.services.relay`, pacchetto oggi deprecato); in questo progetto è invocato indirettamente tramite le Sessions (§2.6).
 - **Multiplayer Services SDK (MPS SDK)**: il pacchetto unificato `com.unity.services.multiplayer`, che da settembre 2026 sostituisce i pacchetti standalone Lobby/Relay/Matchmaker/Multiplay. Vedi §2.6.
 - **Session / `ISession`**: l'astrazione centrale del Multiplayer Services SDK: rappresenta una partita in corso (o in fase di creazione), tenendo insieme allocazione Relay, join code e avvio di `NetworkManager`. Vedi §2.6.6.
-- **`SessionOptions`**: la configurazione passata a `CreateSessionAsync` (numero massimo di giocatori, tipo di rete via `.WithRelayNetwork()`/`.WithDistributedAuthorityNetwork()`). Vedi §2.6.6.
+- **`SessionOptions`**: la configurazione passata a `CreateSessionAsync` (nome, numero massimo di giocatori, pubblica/privata, tipo di rete via `.WithRelayNetwork()`/`.WithDistributedAuthorityNetwork()`). Vedi §2.6.6.
+- **Lobby**: la "sala d'attesa" pubblica di una partita: ha un nome, una capienza e compare nelle ricerche degli altri giocatori. Nel corso si crea a mano (`com.unity.services.lobby`, deprecato); in questo progetto ogni Session è già una Lobby. Vedi §2.6.7.
+- **Heartbeat**: il "sono ancora vivo" che l'host deve mandare periodicamente alla Lobby, altrimenti Unity la chiude. Con le Sessions lo manda l'SDK da solo. Vedi §2.6.7.
+- **Unity Cloud Dashboard**: il sito (<https://cloud.unity.com>) dove vedere lobby attive, uso del Relay e giocatori autenticati. Vedi §2.6.9.
 
 ---
 
-*Documento aggiornato a settembre 2026. Le sezioni di gameplay (§1, §4, §5, §6) restano generate a partire dai commenti `[FLUSSO N]` presenti nel codice sorgente: se aggiungi nuove funzionalità di gameplay, continua la numerazione da 90 in poi e aggiorna la tabella in §6. La sezione di bootstrap/rete (§2) non usa più questa numerazione: è stata riscritta per documentare la migrazione a Unity Multiplayer Services SDK (Sessions), resa necessaria dalla deprecazione dei pacchetti standalone Lobby/Relay/Matchmaker/Multiplay avvenuta dopo la registrazione del corso — vedi §2.6 per il dettaglio completo.*
+*Documento aggiornato a ottobre 2026 (aggiunte le Lobby, §2.6.7). Le sezioni di gameplay (§1, §4, §5, §6) restano generate a partire dai commenti `[FLUSSO N]` presenti nel codice sorgente: se aggiungi nuove funzionalità di gameplay, continua la numerazione da 90 in poi e aggiorna la tabella in §6. La sezione di bootstrap/rete (§2) non usa più questa numerazione: è stata riscritta per documentare la migrazione a Unity Multiplayer Services SDK (Sessions), resa necessaria dalla deprecazione dei pacchetti standalone Lobby/Relay/Matchmaker/Multiplay avvenuta dopo la registrazione del corso — vedi §2.6 per il dettaglio completo.*
