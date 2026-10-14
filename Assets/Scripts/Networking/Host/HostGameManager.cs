@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Services.Authentication;
 using Unity.Services.Multiplayer;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -39,7 +40,8 @@ public class HostGameManager
 
         UserData userData = new UserData
         {
-            username = PlayerPrefs.GetString(NameSelector.playerNameKey, "Missing name")
+            username = PlayerPrefs.GetString(NameSelector.playerNameKey, "Missing name"),
+            userAuthId = AuthenticationService.Instance.PlayerId
         };
         string payload = JsonUtility.ToJson(userData);
         byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
