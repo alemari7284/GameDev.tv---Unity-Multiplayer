@@ -17,7 +17,7 @@ using static AuthenticationWrapper;
 /// racchiude la logica di bootstrap lato client: inizializzare i servizi Unity
 /// Gaming Services e autenticarsi, poi far entrare il giocatore nel menu.
 /// </summary>
-public class ClientGameManager
+public class ClientGameManager : IDisposable
 {
     private const string menuSceneName = "Menu";
     private ISession session;
@@ -98,5 +98,10 @@ public class ClientGameManager
         byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
 
         NetworkManager.Singleton.NetworkConfig.ConnectionData = payloadBytes;
+    }
+
+    public void Dispose()
+    {
+        networkClient?.Dispose();
     }
 }

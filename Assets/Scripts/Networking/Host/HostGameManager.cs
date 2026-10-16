@@ -14,7 +14,7 @@ using UnityEngine.SceneManagement;
 // Nota: a differenza del corso, qui non serve nessun riferimento al pacchetto
 // Unity.Services.Lobbies (deprecato): Lobby e Relay sono inglobati in
 // Unity.Services.Multiplayer e si usano solo attraverso la Session.
-public class HostGameManager
+public class HostGameManager : IDisposable
 {
     // session: stato della sessione corrente, salvato sull'istanza (non come
     // variabile locale del metodo) perche' servira' anche altrove in futuro — es.
@@ -23,7 +23,9 @@ public class HostGameManager
     // campo lobbyId del corso: session.Id e' l'id della Lobby sottostante, quello
     // che i client useranno con JoinSessionByIdAsync dalla lista lobby.
     // gameSceneName/maxConnections sono invece semplice configurazione.
-    private ISession session;
+    // IHostSession (non ISession): e' il tipo restituito da CreateSessionAsync ed
+    // espone le operazioni riservate all'host, tra cui DeleteAsync usata in Dispose.
+    private IHostSession session;
     private const string gameSceneName = "Game";
     private const int maxConnections = 20;
 
@@ -100,5 +102,45 @@ public class HostGameManager
         // l'unica che porta con se' anche tutti i client gia' connessi all'Host
         // verso la stessa scena "Game".
         NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
+    }
+
+    // Chiamato da HostSingleton.OnDestroy (chiusura del gioco / distruzione del
+    // singleton). Nel corso qui si fermava la coroutine HeartbeatLobby e si
+    // cancellava la lobby con Lobbies.Instance.DeleteLobbyAsync(lobbyId): con le
+    // Session non esistono ne' la coroutine (l'heartbeat lo fa l'SDK) ne' il
+    // lobbyId, basta cancellare la Session, che elimina anche la Lobby sottostante.
+    public void Dispose()
+    {
+        // Prima il NetworkServer: si sgancia dagli eventi del NetworkManager e lo
+        // spegne. "?." perche' se l'host non e' mai stato avviato networkServer e' null.
+        networkServer?.Dispose();
+
+        // Dispose e' sincrono (IDisposable), quindi niente await qui: la cancellazione
+        // parte "fire-and-forget" (lo scarto "_ =" evita il warning sul Task non
+        // atteso). Nel corso invece Dispose era "async void".
+        _ = DeleteSessionAsync();
+    }
+
+    private async Task DeleteSessionAsync()
+    {
+        if (session == null) return;
+
+        // Azzerato subito, prima dell'await, cosi' una seconda chiamata a Dispose
+        // non prova a cancellare due volte la stessa Session.
+        IHostSession sessionToDelete = session;
+        session = null;
+
+        try
+        {
+            // DeleteAsync: esce dai moduli di rete (Relay), poi cancella la Lobby
+            // lato servizio, cosi' non resta "fantasma" nella lista lobby dei client.
+            await sessionToDelete.DeleteAsync();
+        }
+        // Exception generica al posto di LobbyServiceException del corso, per lo
+        // stesso motivo di StartHostAsync (l'SDK lancia SessionException).
+        catch (Exception e)
+        {
+            Debug.Log(e);
+        }
     }
 }
