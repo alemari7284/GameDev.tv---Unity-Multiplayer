@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
@@ -29,6 +30,15 @@ public class ClientGameManager : IDisposable
         await UnityServices.InitializeAsync();
 
         networkClient = new NetworkClient(NetworkManager.Singleton);
+
+#if UNITY_WEBGL
+        // Il browser non puo' usare UDP: su WebGL le Sessions chiedono al Relay
+        // una connessione wss, quindi UnityTransport deve parlare WebSocket.
+        // initAsync gira in ogni istanza giocabile (anche in quella che fara'
+        // da host), quindi basta impostarlo qui, prima di qualunque Host/Join.
+        // UNITY_WEBGL vale anche nell'Editor con piattaforma WebGL attiva.
+        NetworkManager.Singleton.GetComponent<UnityTransport>().UseWebSockets = true;
+#endif
 
         AuthState authState = await doAuth();
 

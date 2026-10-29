@@ -7,7 +7,7 @@
 
 ## 0. Come leggere questo documento
 
-Il codice di **gameplay** (§4, §5) è raccontato in **ordine cronologico**, cioè nell'ordine in cui viene eseguito durante una partita, non nell'ordine dei file: ingresso in partita → input → mira → sparo → danno → vita → monete → morte e respawn. Ogni tabella indica il metodo o il campo in cui succede ogni passo, così puoi aprire il file e trovarlo subito.
+Il codice di **gameplay** (§4, §5) è raccontato in **ordine cronologico**, cioè nell'ordine in cui viene eseguito durante una partita, non nell'ordine dei file: ingresso in partita → input → mira → sparo → danno → vita → monete → morte e respawn → classifica. Ogni tabella indica il metodo o il campo in cui succede ogni passo, così puoi aprire il file e trovarlo subito.
 
 Il codice di **bootstrap/rete** (§2 — avvio dell'app, autenticazione, avvio della sessione Host/Client) è invece organizzato per file/argomento, con il codice vero incollato dentro: quei file sono stati riscritti a settembre 2026 per una migrazione dell'ecosistema Unity Gaming Services avvenuta dopo la registrazione del corso (§2.6 spiega tutto nel dettaglio).
 
@@ -24,7 +24,7 @@ Questo documento è organizzato così:
 7. Checklist mentale da seguire ogni volta che scrivi un componente di rete nuovo (§7)
 8. Glossario (§8)
 
-> 🎮 **Sugli "esempi stupidi"**: in tutto il documento i concetti sono spiegati con paragoni presi da tre giochi — **Metal Gear Solid** (Snake, il Codec, Shadow Moses), **Crash Bandicoot** (casse, frutti Wumpa, Crash Team Racing) e **Rocket League** (macchine, palla, boost, partite private). Non sono precisi al 100% su come quei giochi funzionano davvero dietro le quinte: servono solo a fissare l'idea.
+> 🎮 **Sugli "esempi stupidi"**: in tutto il documento i concetti sono spiegati con paragoni presi da tre giochi — **Metal Gear Solid** (Snake, il Codec, Shadow Moses), **Crash Bandicoot** (casse, frutti Wumpa, Crash Team Racing) e **Rocket League** (macchine, palla, boost, partite private). Non sono precisi al 100% su come quei giochi funzionano davvero dietro le quinte: servono solo a fissare l'idea. Fa eccezione la classifica (§5.11), dove i paragoni sono con **React/JavaScript**.
 
 ---
 
@@ -36,6 +36,8 @@ Questo documento è organizzato così:
 | **NetworkObject** | Componente che rende un GameObject "spawnabile in rete": gli dà un ID univoco condiviso da tutti. | È il numero sopra la macchina in Rocket League: tu vedi "Octane #3", il tuo amico pure, e tutti e due sanno che è LA STESSA macchina, anche se ognuno la vede sul proprio schermo. |
 | **NetworkBehaviour** | Un `MonoBehaviour` "consapevole della rete": espone `IsServer`, `IsClient`, `IsOwner`, `OwnerClientId`, `OnNetworkSpawn`/`OnNetworkDespawn`. | È Snake con il Codec sempre in tasca: oltre a fare il suo lavoro (strisciare, nascondersi nella scatola di cartone), sa sempre rispondere a "sono io a dirigere la missione (server) o sto eseguendo ordini (client)? E questo corpo è il MIO (owner)?". |
 | **NetworkVariable\<T\>** | Variabile che si sincronizza da sola su tutti i client. Di default: scrivibile SOLO dal server, leggibile da tutti. | Il tabellone del punteggio di Rocket League: lo aggiorna solo il server quando la palla entra in porta, e tutti lo vedono cambiare. Se attacchi un post-it con scritto "5-0" sul TUO monitor, il tabellone vero resta 0-3. |
+| **NetworkList\<T\>** | Come una `NetworkVariable`, ma per una **lista**: scrive solo il server, la ricevono tutti, e ogni modifica (aggiunta, rimozione, sostituzione) scatena `OnListChanged`. Vedi §5.11. | In React: un array di `useState` che vive sul server e arriva a tutti i browser. Il server fa `setEntities`, e ogni client riceve l'"azione" (`ADD`, `REMOVE`, `VALUE`) come in un reducer. |
+| **INetworkSerializable** | Interfaccia per insegnare a Netcode come trasformare in byte (e ritorno) una tua `struct`, campo per campo. Serve per mettere tipi tuoi dentro `NetworkList`, `NetworkVariable` o RPC. Vedi §5.11. | `JSON.stringify` e `JSON.parse` fusi in un'unica funzione, che a seconda del verso scrive o legge. |
 | **ServerRpc** | Chiamata di metodo da client → eseguita sul server. | Snake che chiama Otacon al Codec: "apri questa porta!". Non è Snake ad aprirla: lui chiede, e la porta la apre chi ha davvero accesso al sistema (server). |
 | **ClientRpc** | Chiamata di metodo da server → eseguita su tutti i client (o su un sottoinsieme). | L'allarme di Shadow Moses: lo fa scattare solo la base (server), ma tutte le guardie (client) lo sentono nello stesso momento e gli compare il "**!**" sopra la testa. |
 | **Server authority** | Il server è l'unica fonte di verità: decide se un'azione è valida. | Il goal in Rocket League: puoi giurare di aver toccato la palla per ultimo, ma se il server dice che il goal l'ha segnato l'avversario, il goal è dell'avversario. Punto. |
@@ -1462,7 +1464,7 @@ public class RespawnHandler : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        TankPlayer[] players = FindObjectsOfType<TankPlayer>();
+        TankPlayer[] players = FindObjectsByType<TankPlayer>(FindObjectsSortMode.None);
         foreach (TankPlayer player in players)
         {
             handlePlayerSpawned(player);
@@ -1502,7 +1504,7 @@ public class RespawnHandler : NetworkBehaviour
 
 | # | Dove | Cosa succede |
 |---|---|---|
-| 1 | `OnNetworkSpawn`, `FindObjectsOfType<TankPlayer>()` | I tank già in scena **prima** che il `RespawnHandler` esistesse (es. quello dell'host) hanno già lanciato il loro `OnPlayerSpawned`, quando nessuno ascoltava: li si recupera a mano, una volta sola. |
+| 1 | `OnNetworkSpawn`, `FindObjectsByType<TankPlayer>(...)` | I tank già in scena **prima** che il `RespawnHandler` esistesse (es. quello dell'host) hanno già lanciato il loro `OnPlayerSpawned`, quando nessuno ascoltava: li si recupera a mano, una volta sola. (Nel corso: `FindObjectsOfType`, oggi deprecato; vedi §5.11.) |
 | 2 | `OnNetworkSpawn`, `+= OnPlayerSpawned/OnPlayerDespawned` | Da qui in poi i nuovi tank si annunciano da soli tramite gli eventi statici di `TankPlayer` (§5.0). Disiscrizione a specchio in `OnNetworkDespawn`. |
 | 3 | `handlePlayerSpawned` | Si iscrive a `Health.OnDie` di quel tank con una lambda che "ricorda" quale `TankPlayer` è (l'evento passa solo l'`Health`). |
 | 4 | `Health.modifyHealth` (§5.7) | La vita arriva a 0: `OnDie` scatta, una volta sola grazie a `isDead`. |
@@ -1519,6 +1521,384 @@ Essendo un oggetto **nuovo**, il tank respawnato ha tutto azzerato: vita piena (
 > ⚠️ **Bug noto (anche nel codice del corso)**: `handlePlayerDespawned` prova a togliere l'iscrizione con una **nuova** lambda: `OnDie -= (health) => handlePlayerDie(player)`. Due lambda scritte uguali sono comunque due oggetti diversi, quindi `-=` non trova niente da togliere e l'iscrizione resta. In pratica non fa danni, perché l'`Health` del tank viene distrutto insieme al tank e l'iscrizione sparisce con lui. Ma la riga non fa quello che sembra. La forma corretta è salvare il delegato (es. in un `Dictionary<TankPlayer, Action<Health>>`) e togliere proprio quello. Vedi §6.12.
 
 > **Esempio stupido**: è la vita persa in Crash Bandicoot. Crash finisce nel burrone (`OnDie`), sparisce (`Destroy`), un attimo di pausa (`yield return null`), e ricompare a un checkpoint (`SpawnPoint`) con la salute piena. Non è lo stesso Crash "rimesso in piedi": è un Crash nuovo, che riparte pulito. Solo che qui, a differenza del gioco, perdi anche tutti i frutti Wumpa raccolti.
+
+### 5.11 Classifica (leaderboard) — `LeaderboardEntityState.cs`, `Leaderboard.cs`, `LeaderboardEntityDisplay.cs`
+
+File coinvolti:
+- `Assets/Scripts/UI/Leaderboard/LeaderboardEntityState.cs` — `struct` con i dati di **una** riga della classifica (id, nome, monete), in un formato che si può spedire in rete.
+- `Assets/Scripts/UI/Leaderboard/Leaderboard.cs` — `NetworkBehaviour` sul GameObject `GameHUD` della scena `Game`. `GameHUD` ha anche un `NetworkObject`: è un oggetto di rete **piazzato in scena**, non spawnato da codice. Tiene la lista sincronizzata e la disegna.
+- `Assets/Scripts/UI/Leaderboard/LeaderboardEntityDisplay.cs` — semplice `MonoBehaviour` sul prefab `Assets/Prefabs/UI/Leaderboard/LeaderboardEntity.prefab`: **una** riga di testo a schermo.
+- `TankPlayer.cs` — nuova proprietà `wallet` (il `CoinWallet` del tank, assegnato nel Player Prefab): serve per arrivare alle monete partendo dal giocatore.
+- Cambio collaterale in `RespawnHandler` (§5.10): `FindObjectsOfType<TankPlayer>()` diventa `FindObjectsByType<TankPlayer>(FindObjectsSortMode.None)`. È la versione nuova di Unity, più veloce perché non ordina i risultati. La vecchia è deprecata.
+
+> 🧑‍💻 **Sugli esempi di questa sezione**: qui, al posto dei videogiochi, i paragoni sono con **React/JavaScript**. Una classifica è, in fondo, una lista di righe ordinate che si aggiorna da sola: roba da frontend.
+
+#### L'idea in una frase
+
+Il **server** tiene una **lista di dati** (chi gioca e quante monete ha). Ogni **client** la riceve e ne **disegna una vista** (righe di testo ordinate). È lo stesso "scrivere ≠ mostrare" di `Health`/`HealthDisplay` (§5.7), ma con una **lista** al posto di un numero.
+
+```
+SERVER (scrive i dati)                               OGNI CLIENT (disegna)
+TankPlayer.OnPlayerSpawned  ──► Add riga                    │
+TankPlayer.OnPlayerDespawned ─► Remove riga                 │
+CoinWallet.totalCoins cambia ─► sostituisce la riga         │
+                │                                           │
+                └──► NetworkList<LeaderboardEntityState> ───┴──► OnListChanged
+                     (sincronizzata da Netcode)                   └► crea / distrugge / aggiorna
+                                                                     le righe, le ordina,
+                                                                     mostra le prime 8 (+ la tua)
+```
+
+> **Esempio React**: è la classica separazione **stato / vista**. La `NetworkList` è lo **stato** (un array, come quello di `useState`, che però vive sul server e arriva a tutti, come se fosse spinto da un websocket). `handleLeaderboardEntitiesChanged` è il **render**. C'è una grossa differenza: React ridisegna da solo a partire dallo stato; Unity no. Le righe sono GameObject veri, e vanno create, distrutte e aggiornate **a mano**, evento per evento. È come scrivere React senza React, a colpi di `document.createElement` e `element.remove()`.
+
+#### Pezzo 1 — `LeaderboardEntityState`: il formato di una riga
+
+```csharp
+public struct LeaderboardEntityState : INetworkSerializable, IEquatable<LeaderboardEntityState>
+{
+    public ulong clientId;
+    public FixedString32Bytes playerName;
+    public int coins;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref clientId);
+        serializer.SerializeValue(ref playerName);
+        serializer.SerializeValue(ref coins);
+    }
+
+    public bool Equals(LeaderboardEntityState other)
+    {
+        return clientId == other.clientId &&
+            playerName.Equals(other.playerName) &&
+                coins == other.coins;
+    }
+}
+```
+
+| Dove | Cosa succede |
+|---|---|
+| `struct`, non `class` | `NetworkList<T>` accetta solo **tipi valore** senza riferimenti dentro (in gergo *unmanaged*): numeri, `bool`, `FixedString…` e struct fatte di questi. Una `class`, o anche solo un campo `string`, non andrebbe bene. |
+| `FixedString32Bytes playerName` | Stesso motivo di `TankPlayer.playerName` (§5.0): `string` ha lunghezza variabile, `FixedString32Bytes` no. |
+| `INetworkSerializable` + `NetworkSerialize` | Dice a Netcode **come impacchettare e spacchettare** la struct in byte. Netcode non conosce i tuoi tipi: glielo spieghi tu, campo per campo. |
+| `SerializeValue(ref ...)` | Lo **stesso metodo** serve in **entrambe le direzioni**. Quando Netcode spedisce, legge il campo e lo scrive nel buffer. Quando riceve, legge dal buffer e **riempie** il campo (per questo serve `ref`). Visto che è un solo metodo, l'ordine dei campi è per forza identico all'andata e al ritorno. |
+| `IEquatable` + `Equals` | La `NetworkList` deve saper **confrontare** due elementi: per `Remove(entity)`, che deve trovare *quale* elemento togliere, e per accorgersi di quando un elemento è cambiato. |
+
+> **Esempio React/JS**: `NetworkSerialize` è `JSON.stringify` e `JSON.parse` fusi in **una sola funzione**, che a seconda del verso scrive o legge. È lo stesso lavoro che in §2.7 facevamo a mano per `UserData` (oggetto → JSON → byte), ma qui in binario: più compatto, e senza passare dal testo.
+
+#### Pezzo 2 — `NetworkList`: una `NetworkVariable`, ma lista
+
+```csharp
+private NetworkList<LeaderboardEntityState> leaderboardEntities;
+
+private void Awake()
+{
+    leaderboardEntities = new NetworkList<LeaderboardEntityState>();
+}
+```
+
+- Funziona come una `NetworkVariable` (§1): **scrive solo il server, leggono tutti**, e la sincronizzazione è automatica.
+- Non rispedisce tutta la lista a ogni modifica: manda solo il **cambiamento** (un elemento aggiunto, tolto o sostituito).
+- Su ogni macchina il cambiamento scatena `OnListChanged`, con un `NetworkListEvent<T>` che dice **cosa** è successo: `Type` (`Add`, `Remove`, `Value`, più altri non usati qui, come `Insert`, `RemoveAt`, `Clear`) e `Value` (l'elemento coinvolto).
+- **Creata in `Awake`, non alla dichiarazione del campo.** La `NetworkList` usa memoria *nativa* (fuori dal garbage collector di C#). Con Netcode 1.x, se la inizializzi direttamente nel campo, ottieni avvisi di memory leak: per questo il corso la crea in `Awake`.
+- **Gli elementi sono copie** (sono struct). `leaderboardEntities[i].coins = 5;` non funziona: va **sostituito l'elemento intero** (vedi `handleCoinsChanged` qui sotto). È proprio la sostituzione a generare l'evento `Value`.
+
+> **Esempio React**: `OnListChanged` + `switch (changeEvent.Type)` è un **reducer** alla Redux: arriva un'"azione" con un `type` (`ADD`, `REMOVE`, `VALUE`) e un payload, e tu decidi cosa fare per ogni tipo. E la regola "sostituisci l'elemento intero" è l'**immutabilità** di React: non fai `state[i].coins = 5`, fai `setState(prev => prev.map(e => e.id === id ? { ...e, coins: 5 } : e))`.
+
+#### Pezzo 3 — Lato server: chi entra, chi esce, chi raccoglie monete
+
+```csharp
+public override void OnNetworkSpawn()
+{
+    // ... (ramo IsClient: vedi Pezzo 4)
+
+    if (IsServer)
+    {
+        TankPlayer[] players = FindObjectsByType<TankPlayer>(FindObjectsSortMode.None);
+        foreach (TankPlayer player in players)
+        {
+            handlePlayerSpawned(player);
+        }
+        TankPlayer.OnPlayerSpawned += handlePlayerSpawned;
+        TankPlayer.OnPlayerDespawned += handlePlayerDespawned;
+    }
+}
+
+private void handlePlayerSpawned(TankPlayer player)
+{
+    leaderboardEntities.Add(new LeaderboardEntityState
+    {
+        clientId = player.OwnerClientId,
+        playerName = player.playerName.Value,
+        coins = 0
+    });
+    player.wallet.totalCoins.OnValueChanged +=
+        (oldCoins, newCoins) => handleCoinsChanged(player.OwnerClientId, newCoins);
+}
+
+private void handlePlayerDespawned(TankPlayer player)
+{
+    if (leaderboardEntities == null) return;
+
+    foreach (LeaderboardEntityState entity in leaderboardEntities)
+    {
+        if (entity.clientId != player.OwnerClientId) continue;
+
+        leaderboardEntities.Remove(entity);
+        break;
+    }
+
+    player.wallet.totalCoins.OnValueChanged -=
+    (oldCoins, newCoins) => handleCoinsChanged(player.OwnerClientId, newCoins);
+}
+
+private void handleCoinsChanged(ulong clientId, int newCoins)
+{
+    for (int i = 0; i < leaderboardEntities.Count; i++)
+    {
+        if (leaderboardEntities[i].clientId != clientId) continue;
+
+        leaderboardEntities[i] = new LeaderboardEntityState
+        {
+            clientId = leaderboardEntities[i].clientId,
+            playerName = leaderboardEntities[i].playerName,
+            coins = newCoins
+        };
+        return;
+    }
+}
+```
+
+| # | Dove | Cosa succede |
+|---|---|---|
+| 1 | `OnNetworkSpawn`, `FindObjectsByType` | Stesso trucco di `RespawnHandler` (§5.10, pattern §6.12): i tank già in partita prima che la classifica esistesse (es. quello dell'host) hanno già annunciato il loro spawn quando nessuno ascoltava. Li si recupera a mano, una volta sola. |
+| 2 | `OnNetworkSpawn`, `+= OnPlayerSpawned/OnPlayerDespawned` | Da qui in poi ogni tank che entra o esce si annuncia da solo (eventi statici di `TankPlayer`, §5.0). |
+| 3 | `handlePlayerSpawned`, `Add` | Aggiunge una riga: id del proprietario, nome (già scritto da `TankPlayer.OnNetworkSpawn`) e 0 monete. |
+| 4 | `handlePlayerSpawned`, `OnValueChanged +=` | Si mette in ascolto delle monete **di quel tank**. La lambda "ricorda" `player.OwnerClientId`, perché `OnValueChanged` passa solo il valore vecchio e quello nuovo, non di chi sono. |
+| 5 | `handleCoinsChanged` | Cerca la riga con quel `clientId` e la **sostituisce intera** con una copia che ha le monete aggiornate (Pezzo 2: gli elementi sono copie). |
+| 6 | `handlePlayerDespawned` | Trova la riga di chi esce e la toglie (`Remove` usa `Equals`, Pezzo 1). Il `break` subito dopo è obbligatorio: modificare una lista mentre la si scorre con `foreach` è vietato, quindi si esce dal ciclo appena fatto. |
+| 7 | `handlePlayerDespawned`, `if (leaderboardEntities == null)` | Protezione per la chiusura: quando la scena viene smontata, la lista potrebbe essere già stata distrutta. |
+| 8 | `OnNetworkDespawn`, ramo `IsServer` | A specchio: toglie tutte le righe e si disiscrive dagli eventi statici (§6.5). |
+
+**Nota sul respawn (§5.10)**: quando un tank muore viene distrutto e ricreato. Quindi `OnPlayerDespawned` toglie la sua riga, e `OnPlayerSpawned` del nuovo tank ne aggiunge una **nuova a 0 monete**. È coerente con il fatto che anche il `CoinWallet` del tank nuovo riparte da 0.
+
+#### Pezzo 4 — Lato client: disegnare la lista
+
+```csharp
+public override void OnNetworkSpawn()
+{
+    if (IsClient)
+    {
+        leaderboardEntities.OnListChanged += handleLeaderboardEntitiesChanged;
+        foreach (LeaderboardEntityState entity in leaderboardEntities)
+        {
+            handleLeaderboardEntitiesChanged(new NetworkListEvent<LeaderboardEntityState>
+            {
+                Type = NetworkListEvent<LeaderboardEntityState>.EventType.Add,
+                Value = entity
+            });
+        }
+    }
+    // ... (ramo IsServer: vedi Pezzo 3)
+}
+
+private void handleLeaderboardEntitiesChanged(NetworkListEvent<LeaderboardEntityState> changeEvent)
+{
+    switch (changeEvent.Type)
+    {
+        case NetworkListEvent<LeaderboardEntityState>.EventType.Add:
+            if (!entityDisplays.Any(x => x.id == changeEvent.Value.clientId))
+            {
+                LeaderboardEntityDisplay leaderboardEntity =
+                    Instantiate(leaderboardEntityPrefab, leaderboardEntityHolder);
+                leaderboardEntity.init(
+                    changeEvent.Value.clientId,
+                    changeEvent.Value.playerName,
+                    changeEvent.Value.coins);
+                entityDisplays.Add(leaderboardEntity);
+            }
+            break;
+        case NetworkListEvent<LeaderboardEntityState>.EventType.Remove:
+            LeaderboardEntityDisplay displayToRemove =
+                entityDisplays.FirstOrDefault(x => x.id == changeEvent.Value.clientId);
+            if (displayToRemove != null)
+            {
+                displayToRemove.transform.SetParent(null);
+                Destroy(displayToRemove.gameObject);
+                entityDisplays.Remove(displayToRemove);
+            }
+            break;
+        case NetworkListEvent<LeaderboardEntityState>.EventType.Value:
+            LeaderboardEntityDisplay displayToUpdate =
+                entityDisplays.FirstOrDefault(x => x.id == changeEvent.Value.clientId);
+            if (displayToUpdate != null)
+            {
+                displayToUpdate.updateCoins(changeEvent.Value.coins);
+            }
+            break;
+    }
+    entityDisplays.Sort((first, second) => second.coins.CompareTo(first.coins));
+
+    for (int i = 0; i < entityDisplays.Count; i++)
+    {
+        entityDisplays[i].transform.SetSiblingIndex(i);
+        entityDisplays[i].updateText();
+        entityDisplays[i].gameObject.SetActive(i <= entitiesToDisplay - 1);
+    }
+    LeaderboardEntityDisplay myDisplay =
+        entityDisplays.FirstOrDefault(x => x.id == NetworkManager.Singleton.LocalClientId);
+
+    if (myDisplay != null)
+    {
+        if (myDisplay.transform.GetSiblingIndex() >= entitiesToDisplay)
+        {
+            leaderboardEntityHolder.GetChild(entitiesToDisplay - 1).gameObject.SetActive(false);
+            myDisplay.gameObject.SetActive(true);
+        }
+    }
+}
+```
+
+| # | Dove | Cosa succede |
+|---|---|---|
+| 1 | `OnNetworkSpawn`, `OnListChanged +=` | Ogni client (host compreso) si mette in ascolto dei cambiamenti della lista. |
+| 2 | `OnNetworkSpawn`, `foreach` con eventi `Add` finti | Stessa lezione di `HealthDisplay` (§5.7): l'evento parla solo dei **cambiamenti**. Chi entra a partita iniziata riceve la lista già piena, ma nessun `Add` per le righe che c'erano già. Allora si "fingono" a mano, un `Add` per ogni elemento presente. |
+| 3 | `Add`, `entityDisplays.Any(...)` | Crea la riga solo se non esiste già una riga con quel `clientId`. È una protezione contro i doppioni: la stessa riga potrebbe arrivare sia dal ciclo del punto 2 sia da un evento vero. |
+| 4 | `Add`, `Instantiate(prefab, leaderboardEntityHolder)` | Nuova riga come figlia del contenitore. Il contenitore ha un layout verticale: i figli vengono impilati nell'ordine in cui compaiono nella Hierarchy. |
+| 5 | `Remove` | Trova la riga e la distrugge. `SetParent(null)` la stacca **subito** dal contenitore: `Destroy` avviene solo a fine frame, e senza staccarla la riga morta verrebbe ancora contata da `GetChild` qui sotto. |
+| 6 | `Value` | Aggiorna solo le monete della riga esistente. |
+| 7 | `Sort` | Ordina la lista C# delle righe per monete, **dalla più alta** (`second` confrontato con `first`, cioè ordine decrescente). |
+| 8 | `SetSiblingIndex(i)` | Sposta ogni riga nella posizione `i` tra i figli del contenitore. È questo che cambia l'ordine **a schermo**, perché il layout segue l'ordine dei figli. |
+| 9 | `updateText()` | Riscrive il testo: la posizione in classifica viene letta da `GetSiblingIndex()`, quindi va aggiornata **dopo** lo spostamento. |
+| 10 | `SetActive(i <= entitiesToDisplay - 1)` | Mostra solo le prime `entitiesToDisplay` righe (8). Le altre esistono ma sono nascoste. |
+| 11 | `myDisplay` fuori dalle prime 8 | Se la tua riga è nascosta (sei 10°), si spegne l'8ª riga visibile e si accende la tua. Visto che il layout salta i figli disattivati, la tua riga compare **in fondo**, subito dopo il 7°, con la tua posizione vera ("10. Gino (20)"). |
+
+#### Pezzo 5 — `LeaderboardEntityDisplay`: una riga
+
+```csharp
+public class LeaderboardEntityDisplay : MonoBehaviour
+{
+    [SerializeField] private TMP_Text displayText;
+    [SerializeField] private Color myColor;
+    private FixedString32Bytes playerName;
+    public ulong id { get; private set; }
+    public int coins { get; private set; }
+
+    public void init(ulong id, FixedString32Bytes playerName, int coins)
+    {
+        this.id = id;
+        this.playerName = playerName;
+        if (id == NetworkManager.Singleton.LocalClientId)
+        {
+            displayText.color = myColor;
+        }
+        updateCoins(coins);
+    }
+
+    public void updateCoins(int coins)
+    {
+        this.coins = coins;
+        updateText();
+    }
+
+    public void updateText()
+    {
+        displayText.text = $"{transform.GetSiblingIndex() + 1}. {playerName} ({coins})";
+    }
+}
+```
+
+- È un `MonoBehaviour` normale: non scrive niente in rete, mostra solo dati che gli passa `Leaderboard`. Non ha bisogno di `NetworkObject` né di `IsOwner`.
+- `id` è il `clientId` del giocatore: è la chiave con cui `Leaderboard` ritrova la riga giusta (`Any`, `FirstOrDefault`).
+- `init` colora la riga con `myColor` se è la **tua**: confronta l'id della riga con `LocalClientId`, cioè "chi sono io su questa macchina".
+- `updateText` calcola la posizione da `GetSiblingIndex() + 1` (gli indici partono da 0, le classifiche da 1).
+
+> **Esempio React**: `LeaderboardEntityDisplay` è un componente "stupido" (presentational): riceve props (`id`, `playerName`, `coins`) e disegna. `id` fa lo stesso lavoro della prop `key` di React: è ciò che permette di capire **quale** riga aggiornare o togliere, invece di ridisegnare tutto da capo.
+
+#### La catena completa: Pino raccoglie una moneta
+
+```
+PC di Pino: il tank tocca la moneta
+   │  (il trigger scatta su tutti i PC, ma conta solo il server, §5.8)
+   ▼
+SERVER: CoinWallet.totalCoins.Value += 10              ← NetworkVariable di Pino
+   │
+   ├──► totalCoins.OnValueChanged                       (sul server)
+   │       └► lambda di Leaderboard → handleCoinsChanged(id di Pino, 30)
+   │             └► leaderboardEntities[i] = new LeaderboardEntityState{..., coins = 30}
+   │                   │
+   │                   ▼  Netcode spedisce il cambiamento (evento Value) a tutti
+   ▼
+OGNI CLIENT: OnListChanged(Type = Value, Value = {Pino, 30})
+   └► handleLeaderboardEntitiesChanged
+        ├─ riga di Pino → updateCoins(30)
+        ├─ Sort per monete → SetSiblingIndex → updateText ("1. Pino (30)")
+        └─ mostra le prime 8 (+ la tua, se sei più in basso)
+```
+
+#### Chi esegue cosa
+
+| Pezzo di codice | Host (alemari) | Client (Alfredo) |
+|---|---|---|
+| `OnNetworkSpawn`, ramo `IsServer` (scrive la lista) | ✅ | ❌ |
+| `handlePlayerSpawned` / `Despawned` / `CoinsChanged` | ✅ | ❌ |
+| `OnNetworkSpawn`, ramo `IsClient` (disegna la lista) | ✅ (l'host è anche client) | ✅ |
+| `handleLeaderboardEntitiesChanged` | ✅ | ✅ |
+| `LeaderboardEntityDisplay` (le righe) | ✅ le sue righe | ✅ le sue righe |
+
+Ogni PC ha le **proprie** righe a schermo, ed evidenzia la **propria**: su alemari è colorata la riga di alemari, su Alfredo quella di Alfredo.
+
+#### Traduzione per frontender: LINQ ↔ array JavaScript
+
+`using System.Linq;` dà alle liste C# dei metodi "alla JavaScript":
+
+| C# (qui) | JavaScript | Cosa fa |
+|---|---|---|
+| `entityDisplays.Any(x => x.id == id)` | `arr.some(x => x.id === id)` | "Ce n'è almeno uno?" → `bool` |
+| `entityDisplays.FirstOrDefault(x => x.id == id)` | `arr.find(x => x.id === id)` | Il primo che corrisponde. Se non c'è: `null` in C#, `undefined` in JS |
+| `entityDisplays.Sort((a, b) => b.coins.CompareTo(a.coins))` | `arr.sort((a, b) => b.coins - a.coins)` | Ordina **sul posto** (modifica la lista), in ordine decrescente. `CompareTo` restituisce negativo/zero/positivo, proprio come la sottrazione in JS |
+| `entityDisplays.Remove(item)` | `arr.splice(arr.indexOf(item), 1)` | Toglie quell'elemento |
+| `switch (changeEvent.Type)` | `switch (action.type)` in un reducer | Decide cosa fare in base al tipo di cambiamento |
+
+Esempio stupido: l'intera vista della classifica, scritta in React, sarebbe più o meno così:
+
+```jsx
+function Leaderboard({ entities, localClientId, entitiesToDisplay = 8 }) {
+  const sorted = [...entities].sort((a, b) => b.coins - a.coins);   // Sort
+  const visible = sorted.slice(0, entitiesToDisplay);               // SetActive(i < 8)
+
+  const myIndex = sorted.findIndex(e => e.clientId === localClientId);
+  if (myIndex >= entitiesToDisplay) {
+    visible[entitiesToDisplay - 1] = sorted[myIndex];               // "mostra sempre me"
+  }
+
+  return (
+    <ol>
+      {visible.map(e => (
+        <li key={e.clientId}                                        // id della riga
+            style={{ color: e.clientId === localClientId ? 'gold' : undefined }}>
+          {sorted.indexOf(e) + 1}. {e.playerName} ({e.coins})
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// E il lato server, in stile setState:
+// spawn   → setEntities(prev => [...prev, { clientId, playerName, coins: 0 }])
+// despawn → setEntities(prev => prev.filter(e => e.clientId !== clientId))
+// monete  → setEntities(prev => prev.map(e => e.clientId === clientId ? { ...e, coins } : e))
+```
+
+In React scrivi **cosa** vuoi vedere e lui calcola le differenze. In Unity, `handleLeaderboardEntitiesChanged` fa a mano il lavoro che React fa da solo: crea, distrugge, sposta e accende/spegne le righe.
+
+#### Bug e limiti noti
+
+> ⚠️ **Stesso bug della lambda di §5.10**: `handlePlayerDespawned` prova a togliere l'iscrizione a `totalCoins.OnValueChanged` con una **nuova** lambda, quindi `-=` non toglie niente. In pratica non fa danni: il `CoinWallet` viene distrutto insieme al tank, e l'iscrizione sparisce con lui. La correzione è la stessa di §6.12 (salvare il delegato in un `Dictionary` e togliere proprio quello).
+
+- **`Sort` non è stabile**: due giocatori con le stesse monete possono scambiarsi di posto a ogni aggiornamento della classifica, anche se le loro monete non sono cambiate.
+- **`using Unity.Services.Lobbies.Models;`** in `Leaderboard.cs` non viene usato: è un avanzo, si può togliere.
+- **La riga sparisce e ricompare a ogni morte**: il respawn ricrea il tank (§5.10), quindi la riga viene tolta e riaggiunta a 0 monete.
 
 ---
 
@@ -1759,7 +2139,7 @@ public class Scoreboard : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         if (!IsServer) return;
-        foreach (Player p in FindObjectsOfType<Player>()) Track(p);   // chi c'era già prima di me
+        foreach (Player p in FindObjectsByType<Player>(FindObjectsSortMode.None)) Track(p);   // chi c'era già prima di me
         Player.OnSpawned += Track;
         Player.OnDespawned += Untrack;
     }
@@ -1780,7 +2160,7 @@ public class Scoreboard : NetworkBehaviour
 ```
 
 Due trappole:
-- **Chi è arrivato prima**: un evento lanciato quando nessuno ascoltava è perso. Per questo, oltre a iscriversi, si recuperano a mano gli oggetti già presenti (`FindObjectsOfType`).
+- **Chi è arrivato prima**: un evento lanciato quando nessuno ascoltava è perso. Per questo, oltre a iscriversi, si recuperano a mano gli oggetti già presenti (`FindObjectsByType`).
 - **Lambda e `-=`**: `evento -= x => Foo(x)` crea una lambda nuova e non toglie nulla. Per disiscriversi serve lo stesso delegato usato con `+=`: un metodo con nome, oppure la lambda salvata (come sopra). È proprio il bug segnalato in §5.10.
 
 Gli eventi `static` vanno sempre tolti a specchio (`OnNetworkDespawn`): sopravvivono a scene e oggetti, e un'iscrizione dimenticata tiene vivo un oggetto già distrutto.
@@ -1862,6 +2242,77 @@ public class MatchTrackerHolder : MonoBehaviour   // il "contenitore" in scena
 
 Se `Dispose` deve fare lavoro asincrono (es. cancellare una Session), non renderlo `async void`: lancia un metodo `async Task` separato con `_ = DoCleanupAsync();` e gestisci le eccezioni lì dentro.
 
+### 6.16 Lista sincronizzata di dati tuoi: `NetworkList` + `struct INetworkSerializable`
+
+Quando tutti devono vedere una **lista** che cambia nel tempo (classifica, chat, inventario condiviso, lista dei giocatori pronti). Vedi la classifica (§5.11).
+
+```csharp
+public struct ReadyEntry : INetworkSerializable, IEquatable<ReadyEntry>
+{
+    public ulong clientId;
+    public bool isReady;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> s) where T : IReaderWriter
+    {
+        s.SerializeValue(ref clientId);
+        s.SerializeValue(ref isReady);
+    }
+
+    public bool Equals(ReadyEntry other) => clientId == other.clientId && isReady == other.isReady;
+}
+
+public class ReadyList : NetworkBehaviour
+{
+    private NetworkList<ReadyEntry> entries;
+
+    private void Awake() => entries = new NetworkList<ReadyEntry>();   // in Awake, non nel campo
+
+    public override void OnNetworkSpawn()
+    {
+        if (IsClient)
+        {
+            entries.OnListChanged += OnChanged;
+            foreach (ReadyEntry e in entries)                          // chi entra tardi: le righe già presenti
+                OnChanged(new NetworkListEvent<ReadyEntry> { Type = NetworkListEvent<ReadyEntry>.EventType.Add, Value = e });
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (IsClient) entries.OnListChanged -= OnChanged;
+    }
+
+    // Solo server: gli elementi sono copie, quindi si sostituiscono interi
+    public void SetReady(ulong clientId, bool ready)
+    {
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].clientId != clientId) continue;
+            entries[i] = new ReadyEntry { clientId = clientId, isReady = ready };
+            return;
+        }
+    }
+
+    private void OnChanged(NetworkListEvent<ReadyEntry> ev)
+    {
+        switch (ev.Type)
+        {
+            case NetworkListEvent<ReadyEntry>.EventType.Add:    /* crea la riga UI */      break;
+            case NetworkListEvent<ReadyEntry>.EventType.Remove: /* distruggi la riga UI */ break;
+            case NetworkListEvent<ReadyEntry>.EventType.Value:  /* aggiorna la riga UI */  break;
+        }
+    }
+}
+```
+
+Le quattro regole da ricordare:
+- Solo **tipi valore** dentro la struct: niente `string`, quindi `FixedString32Bytes` o simili.
+- `NetworkSerialize` serializza **tutti** i campi, `Equals` li confronta **tutti**.
+- **Mai** `entries[i].campo = x`: sostituisci l'elemento intero.
+- Dopo il `+=` su `OnListChanged`, ripassa a mano gli elementi già presenti (come per `OnValueChanged`, §5.7).
+
+Per tenere la lista allineata ai giocatori che entrano ed escono, combinala con gli eventi statici di §6.12. Per ordinarla a schermo, ordina la lista delle righe UI e usa `transform.SetSiblingIndex(i)` sotto un `VerticalLayoutGroup` (§5.11).
+
 ---
 
 ## 7. Checklist mentale per ogni nuovo componente di rete
@@ -1892,6 +2343,8 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
     → Distruggi lato server, aspetta un frame, `SpawnAsPlayerObject(ownerClientId)` (§6.13).
 12. **Una classe C# pura si iscrive a eventi?**
     → Falla `IDisposable` e chiama `Dispose` dall'`OnDestroy` del `MonoBehaviour` che la contiene (§6.15).
+13. **Tutti devono vedere una lista che cambia (classifica, giocatori pronti, chat)?**
+    → `NetworkList` di una `struct` che implementa `INetworkSerializable` e `IEquatable`. Il server sostituisce gli elementi interi, i client reagiscono a `OnListChanged` e ripassano a mano gli elementi già presenti (§6.16).
 
 ---
 
@@ -1918,7 +2371,13 @@ Prima di scrivere un componente multiplayer nuovo, rispondi in ordine a queste d
 - **`ClientNetworkId` / `OwnerClientId` vs `userAuthId`**: il primo è l'id di Netcode, diverso a ogni connessione; il secondo è l'id di Unity Authentication, stabile per lo stesso giocatore. Vedi §2.7.
 - **`IDisposable` / `Dispose`**: l'interfaccia C# per "fare pulizia" in una classe che non è un `MonoBehaviour` (sganciarsi da eventi, chiudere connessioni). Vedi §2.8 e §6.15.
 - **`[InitializeOnLoad]`**: attributo Editor che fa eseguire il costruttore statico di una classe a ogni ricompilazione o apertura del progetto. Vedi §2.9.
+- **`NetworkList<T>`**: lista sincronizzata in rete. Scrive solo il server, e ogni modifica genera `OnListChanged` con un `NetworkListEvent` (`Type` + `Value`). Va creata in `Awake`. Vedi §5.11 e §6.16.
+- **`INetworkSerializable`**: interfaccia con il metodo `NetworkSerialize`, che descrive campo per campo come una `struct` diventa byte e torna indietro (lo stesso metodo per le due direzioni, grazie a `ref`). Vedi §5.11.
+- **`IEquatable<T>` / `Equals`**: interfaccia C# per dire quando due valori sono "uguali". `NetworkList` la richiede per trovare e confrontare gli elementi. Vedi §5.11.
+- **Oggetto di rete piazzato in scena (in-scene placed)**: un GameObject con `NetworkObject` messo a mano nella scena, invece che spawnato da codice. Viene spawnato in rete in automatico quando la scena viene caricata da Netcode. Esempio: `GameHUD` con la `Leaderboard`. Vedi §5.11.
+- **LINQ (`System.Linq`)**: metodi di C# per interrogare le liste, molto simili a quelli degli array JavaScript (`Any` ≈ `some`, `FirstOrDefault` ≈ `find`). Vedi la tabella in §5.11.
+- **`SetSiblingIndex` / `GetSiblingIndex`**: posizione di un GameObject tra i figli del suo genitore. Sotto un `VerticalLayoutGroup` decide l'ordine a schermo. Vedi §5.11.
 
 ---
 
-*Documento aggiornato a ottobre 2026 (aggiunte le Lobby, §2.6.7; nome giocatore e connection approval, §2.7; disconnessione e `Dispose`, §2.8; avvio dall'Editor, §2.9; ingresso in partita, §5.0; morte e respawn, §5.10; pattern §6.11–§6.15). Le sezioni di gameplay (§4, §5) seguono l'ordine di esecuzione durante una partita: se aggiungi nuove funzionalità di gameplay, aggiungi una sottosezione in §5 nel punto della catena in cui il codice viene eseguito. La sezione di bootstrap/rete (§2) è organizzata per file e documenta la migrazione a Unity Multiplayer Services SDK (Sessions) — vedi §2.6 per il dettaglio completo.*
+*Documento aggiornato a ottobre 2026 (aggiunte le Lobby, §2.6.7; nome giocatore e connection approval, §2.7; disconnessione e `Dispose`, §2.8; avvio dall'Editor, §2.9; ingresso in partita, §5.0; morte e respawn, §5.10; classifica, §5.11; pattern §6.11–§6.16). Le sezioni di gameplay (§4, §5) seguono l'ordine di esecuzione durante una partita: se aggiungi nuove funzionalità di gameplay, aggiungi una sottosezione in §5 nel punto della catena in cui il codice viene eseguito. La sezione di bootstrap/rete (§2) è organizzata per file e documenta la migrazione a Unity Multiplayer Services SDK (Sessions) — vedi §2.6 per il dettaglio completo.*
