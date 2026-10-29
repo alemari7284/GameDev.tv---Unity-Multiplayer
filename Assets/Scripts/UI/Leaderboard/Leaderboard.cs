@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.Netcode;
 using Unity.Services.Lobbies.Models;
 using UnityEngine;
@@ -11,6 +12,7 @@ public class Leaderboard : NetworkBehaviour
     [SerializeField] private LeaderboardEntityDisplay leaderboardEntityPrefab;
 
     private NetworkList<LeaderboardEntityState> leaderboardEntities;
+    private List<LeaderboardEntityDisplay> entityDisplays = new List<LeaderboardEntityDisplay>();
 
     private void Awake()
     {
@@ -69,9 +71,34 @@ public class Leaderboard : NetworkBehaviour
         switch (changeEvent.Type)
         {
             case NetworkListEvent<LeaderboardEntityState>.EventType.Add:
-                Instantiate(leaderboardEntityPrefab, leaderboardEntityHolder);
+                if (!entityDisplays.Any(x => x.id == changeEvent.Value.clientId))
+                {
+                    LeaderboardEntityDisplay leaderboardEntity =
+                        Instantiate(leaderboardEntityPrefab, leaderboardEntityHolder);
+                    leaderboardEntity.init(
+                        changeEvent.Value.clientId,
+                        changeEvent.Value.playerName,
+                        changeEvent.Value.coins);
+                    entityDisplays.Add(leaderboardEntity);
+                }
                 break;
             case NetworkListEvent<LeaderboardEntityState>.EventType.Remove:
+                LeaderboardEntityDisplay displayToRemove =
+                    entityDisplays.FirstOrDefault(x => x.id == changeEvent.Value.clientId);
+                if (displayToRemove != null)
+                {
+                    displayToRemove.transform.SetParent(null);
+                    Destroy(displayToRemove.gameObject);
+                    entityDisplays.Remove(displayToRemove);
+                }
+                break;
+            case NetworkListEvent<LeaderboardEntityState>.EventType.Value:
+                LeaderboardEntityDisplay displayToUpdate =
+                    entityDisplays.FirstOrDefault(x => x.id == changeEvent.Value.clientId);
+                if (displayToUpdate != null)
+                {
+                    displayToUpdate.updateCoins(changeEvent.Value.coins);
+                }
                 break;
         }
     }
@@ -84,6 +111,8 @@ public class Leaderboard : NetworkBehaviour
             playerName = player.playerName.Value,
             coins = 0
         });
+        player.wallet.totalCoins.OnValueChanged +=
+            (oldCoins, newCoins) => handleCoinsChanged(player.OwnerClientId, newCoins);
     }
 
     private void handlePlayerDespawned(TankPlayer player)
@@ -96,6 +125,25 @@ public class Leaderboard : NetworkBehaviour
 
             leaderboardEntities.Remove(entity);
             break;
+        }
+
+        player.wallet.totalCoins.OnValueChanged -=
+        (oldCoins, newCoins) => handleCoinsChanged(player.OwnerClientId, newCoins);
+    }
+
+    private void handleCoinsChanged(ulong clientId, int newCoins)
+    {
+        for (int i = 0; i < leaderboardEntities.Count; i++)
+        {
+            if (leaderboardEntities[i].clientId != clientId) continue;
+
+            leaderboardEntities[i] = new LeaderboardEntityState
+            {
+                clientId = leaderboardEntities[i].clientId,
+                playerName = leaderboardEntities[i].playerName,
+                coins = newCoins
+            };
+            return;
         }
     }
 }
